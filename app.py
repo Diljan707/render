@@ -1,41 +1,23 @@
-from datetime import datetime
 from flask import Flask, Response
 import requests
 import re
 import threading
 import time
-import xml.etree.ElementTree as ET
 
 app = Flask(__name__)
 
 cached_m3u = '#EXTM3U\n'
-cached_epg = '<?xml version="1.0" encoding="utf-8"?><tv></tv>'
+cached_epg = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n</tv>'
 is_updating = False
 
-def get_dishtv_token():
-    signin_url = "https://www.dishtv.in/services/epg/signin"
-    headers = {
-        "Content-Type": "application/json",
-        "Origin": "https://www.dishtv.in",
-        "Referer": "https://www.dishtv.in/channel-guide.html"
-    }
-    try:
-        res = requests.post(signin_url, headers=headers, json={}, timeout=5)
-        data = res.json()
-        if data.get("success") == "true":
-            return data.get("token")
-    except Exception:
-        pass
-    return None
-
-def update_background_tasks():
+def update_m3u_background():
     global cached_m3u, cached_epg, is_updating
     if is_updating:
         return
     is_updating = True
     
     try:
-        # ==================== 1. M3U GENERATION LOGIC ====================
+        # 1. Star Sports dynamic cookies fetch karo
         COOKIE_STAR_SPORTS = "https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json"
         star_tokens = {}
         try:
@@ -54,6 +36,7 @@ def update_background_tasks():
         except Exception:
             pass
 
+        # 2. Global fallback cookies fetch karo
         token_urls = [
             "https://allinonereborn2.online/jstrweb2/cookies.json",
             "https://allinonereborn2.online/jstrweb3/cookies.json",
@@ -73,6 +56,21 @@ def update_background_tasks():
             except Exception:
                 continue
 
+        # 3. DishTV LCN Source Fetch Karo (Tusi apni DishTV JSON/Mapping URL ethe pa sakde ho)
+        dishtv_lcn_map = {}
+        try:
+            # Eh sample URL hai, tusi apni DishTV source di URL ethe laga sakde ho
+            dishtv_url = "https://raw.githubusercontent.com/your-username/repo/main/dishtv_channels.json"
+            d_res = requests.get(dishtv_url, timeout=4)
+            if d_res.status_code == 200:
+                d_data = d_res.json()
+                # Mann lo format {"Channel Name": "101"} ya {"channel_id": "101"} hai
+                if isinstance(d_data, dict):
+                    dishtv_lcn_map = {str(k).lower(): str(v) for k, v in d_data.items()}
+        except Exception:
+            pass
+
+        # 4. Base Proxy URL
         base_proxy_url = "https://streamflexsmm.in/license/"
         try:
             target_m3u_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
@@ -91,16 +89,23 @@ def update_background_tasks():
         except Exception:
             pass
 
+        # 5. Channels JSON fetch te M3U generation with DishTV LCN & Filtering
         channels_res = requests.get("https://jjtvxweb.pages.dev/jstr4web.json", timeout=6)
         channels = channels_res.json()
         
-        m3u = '#EXTM3U\n'
-        regional_langs = ['tamil', 'telugu', 'malayalam', 'marathi', 'bangla', 'kannada', 'gujarati', 'odia']
+        m3u = '#EXTM3U url-tvg="http://localhost:10000/epg.xml"\n'
+        epg_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv>\n'
+        
+        regional_langs = ['tamil', 'telugu', 'malayalam', 'marathi', 'bengali', 'kannada', 'gujarati', 'odia']
+        
+        fallback_counter = 1  # Je DishTV source vich channel na mile taan fallback number lai
         
         for ch in channels:
             name = ch.get('name', 'Unknown')
             name_lower = name.lower()
+            ch_id = str(ch.get('id', ''))
             
+            # Regional filter (Punjabi included rahegi)
             skip = False
             for lang in regional_langs:
                 if lang in name_lower:
@@ -117,10 +122,18 @@ def update_background_tasks():
             category = ch.get('category', 'Unknown')
             group = f"JioTV+ ▶ | {category}"
             group_logo = "https://i.postimg.cc/52qG6sKt/STREAMXi.png"
-            ch_id = str(ch.get('id', ''))
             
             if not url:
                 continue
+                
+            # DishTV Lcn check karna (Naam ya ID naal match karke)
+            ch_no = dishtv_lcn_map.get(name_lower) or dishtv_lcn_map.get(ch_id)
+            if not ch_no:
+                ch_no = str(fallback_counter)
+                fallback_counter += 1
+                
+            # Formatting: e.g., "101 - Star Plus" te ch-number="101"
+            formatted_name = f"{ch_no} - {name}"
                 
             key_id = ch.get('keyId', '')
             key_val = ch.get('key', '')
@@ -129,7 +142,8 @@ def update_background_tasks():
             ch_token = star_tokens.get(ch_id) or global_token
             final_url = f"{url}?{ch_token}" if ch_token and '?' not in url else f"{url}&{ch_token}" if ch_token else url
             
-            m3u += f'#EXTINF:-1 tvg-id="{ch_id}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{name}\n'
+            # M3U Line with DishTV ch-number and formatted name
+            m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
             
             if has_clearkey:
                 license_key = f"{key_id}:{key_val}"
@@ -148,61 +162,17 @@ def update_background_tasks():
                 
             m3u += f'{final_url}\n\n'
 
+            # EPG channel tag add karna
+            epg_xml += f'  <channel id="{ch_id}">\n'
+            epg_xml += f'    <display-name lang="en">{name}</display-name>\n'
+            if logo:
+                epg_xml += f'    <icon src="{logo}" />\n'
+            epg_xml += f'  </channel>\n'
+
+        epg_xml += '</tv>'
+
         cached_m3u = m3u
-
-        # ==================== 2. EPG GENERATION LOGIC ====================
-        token = get_dishtv_token()
-        if token:
-            channels_url = "https://www.dishtv.in/services/epg/channels"
-            epg_headers = {
-                "Content-Type": "application/json",
-                "Authorization-Token": token,
-                "Origin": "https://www.dishtv.in",
-                "Referer": "https://www.dishtv.in/channel-guide.html"
-            }
-            res_epg = requests.post(channels_url, headers=epg_headers, json={}, timeout=10)
-            epg_data = res_epg.json()
-            
-            tv = ET.Element("tv")
-            channels_list = epg_data.get("programDetailsByChannel", [])
-
-            for ch in channels_list:
-                ch_id = str(ch.get("channelid", ""))
-                ch_name = ch.get("channelname", "Unknown")
-
-                if not ch_id:
-                    continue
-
-                channel_elem = ET.SubElement(tv, "channel", id=ch_id)
-                display_name = ET.SubElement(channel_elem, "display-name")
-                display_name.text = ch_name
-
-                programs = ch.get("programs", [])
-                for prog in programs:
-                    start_time = prog.get("programstart", "")
-                    stop_time = prog.get("programstop", "")
-                    
-                    try:
-                        start_formatted = datetime.strptime(start_time.split(".")[0], "%Y-%m-%dT%H:%M:%S").strftime("%Y%m%d%H%M%S +0000")
-                        stop_formatted = datetime.strptime(stop_time.split(".")[0], "%Y-%m-%dT%H:%M:%S").strftime("%Y%m%d%H%M%S +0000")
-                    except:
-                        start_formatted = start_time
-                        stop_formatted = stop_time
-
-                    title_text = prog.get("regional", {}).get("english", {}).get("title", "No Title")
-                    desc_text = prog.get("regional", {}).get("english", {}).get("desc", "")
-
-                    prog_elem = ET.SubElement(tv, "programme", start=start_formatted, stop=stop_formatted, channel=ch_id)
-                    title_elem = ET.SubElement(prog_elem, "title", lang="en")
-                    title_elem.text = title_text
-
-                    if desc_text:
-                        desc_elem = ET.SubElement(prog_elem, "desc", lang="en")
-                        desc_elem.text = desc_text
-
-            xml_bytes = ET.tostring(tv, encoding="utf-8", xml_declaration=True)
-            cached_epg = xml_bytes.decode("utf-8")
-
+        cached_epg = epg_xml
     except Exception as e:
         print(f"Background update error: {e}")
     finally:
@@ -210,11 +180,10 @@ def update_background_tasks():
 
 def periodic_updater():
     while True:
-        update_background_tasks()
-        time.sleep(180) # Har 3 minute baad playlist te tokens refresh honge
+        update_m3u_background()
+        time.sleep(180)
 
-# Server start hunde hi pehli vaar background task run karo
-update_background_tasks()
+update_m3u_background()
 threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
@@ -231,3 +200,4 @@ def generate_epg():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
+        
