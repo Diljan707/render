@@ -74,14 +74,32 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 4. Channels JSON fetch te M3U generation
+        # 4. Channels JSON fetch te M3U generation with Filtering & Renaming
         channels_res = requests.get("https://jjtvxweb.pages.dev/jstr4web.json", timeout=6)
         channels = channels_res.json()
         
         m3u = '#EXTM3U\n'
         
+        # 'punjabi' nu etho hata ditta hai, hun Punjabi channels delete nahi honge
+        regional_langs = ['tamil', 'telugu', 'malayalam', 'marathi', 'bengali', 'kannada', 'gujarati', 'odia']
+        
         for ch in channels:
             name = ch.get('name', 'Unknown')
+            name_lower = name.lower()
+            
+            # Rule 1: Je channel name vich koi regional language hai (te Hindi nahi hai), taan skip/delete kar do
+            skip = False
+            for lang in regional_langs:
+                if lang in name_lower:
+                    skip = True
+                    break
+            if skip:
+                continue
+                
+            # Rule 2: Je channel name de piche " Hindi" likheya hai, taan usnu hata ke clean kar do
+            if " hindi" in name_lower:
+                name = re.sub(r'\s+Hindi\b', '', name, flags=re.IGNORECASE)
+
             url = ch.get('url', '')
             logo = ch.get('logo', '')
             category = ch.get('category', 'Unknown')
@@ -127,9 +145,8 @@ def update_m3u_background():
 def periodic_updater():
     while True:
         update_m3u_background()
-        time.sleep(180) # Har 3 minute baad background vich fresh token update ho jange
+        time.sleep(180)
 
-# Server start hunde hi pehli vaar file bana lao te background thread chala do
 update_m3u_background()
 threading.Thread(target=periodic_updater, daemon=True).start()
 
@@ -139,8 +156,8 @@ def home():
 
 @app.route('/playlist.m3u')
 def generate_m3u():
-    # Player nu bina kisse delay de instant ready file mil ju (Zero Latency)
     return Response(cached_m3u, mimetype='audio/x-mpegurl')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
+                            
