@@ -1,4 +1,4 @@
-from flask import Flask, Response
+from flask import Flask, Response, redirect
 import requests
 import re
 import threading
@@ -9,6 +9,9 @@ app = Flask(__name__)
 cached_m3u = '#EXTM3U\n'
 cached_epg = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n</tv>'
 is_updating = False
+
+# ਚੈਨਲਾਂ ਦਾ ਡਾਟਾ ਸਟੋਰ ਕਰਨ ਲਈ ਡਿਕਸ਼ਨਰੀ
+channel_streams_map = {}
 
 
 # ==========================================
@@ -30,81 +33,56 @@ regional_langs = [
 def clean_and_filter_name(name):
     if not name:
         return None
-
     name = name.strip()
     low = name.lower()
-
-    if any(re.search(rf'\b{re.escape(x)}\b', low)
-           for x in regional_langs):
+    if any(re.search(rf'\b{re.escape(x)}\b', low) for x in regional_langs):
         return None
-
-    name = re.sub(r'\s+Hindi\b', '', name,
-                  flags=re.IGNORECASE)
-
+    name = re.sub(r'\s+Hindi\b', '', name, flags=re.IGNORECASE)
     return re.sub(r'\s+', ' ', name).strip()
 
 
 def normalize_name(name):
     name = clean_and_filter_name(name)
-
     if not name:
         return None
-
     name = name.lower()
-    name = re.sub(r'[^a-z0-9]+', '', name)  # ਸਾਰੇ ਸਪੇਸ ਅਤੇ ਨਿਸ਼ਾਨ ਹਟਾ ਕੇ ਮੈਚ ਬਣਾਉਣਾ
-
+    name = re.sub(r'[^a-z0-9]+', '', name)
     return name.strip()
 
 
 # ==========================================
-# SECONDARY Zio.m3u FULL BLOCK EXTRACTOR
+# SECONDARY Zio.m3u STREAM EXTRACTOR
 # ==========================================
 
 def get_secondary_streams():
     streams = {}
     try:
-        url = (
-            "https://raw.githubusercontent.com/"
-            "Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
-        )
+        url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
         r = requests.get(url, timeout=5)
         if r.status_code != 200:
-            print("Failed to fetch Zio.m3u, status:", r.status_code)
             return streams
 
-        lines = r.text.splitlines()
-        current_block = []
-        raw_name = ""
+        raw_text = r.text.replace('\r\n', '\n')
+        entries = raw_text.split('#EXTINF:')
 
-        for line in lines:
-            line_str = line.strip()
-            if line_str.startswith("#EXTINF:"):
-                # ਜੇ ਪਿਛਲਾ ਬਲੌਕ ਪਿਆ ਹੈ ਤਾਂ ਉਸਨੂੰ ਸੇਵ ਕਰੋ
-                if current_block and raw_name:
-                    key = normalize_name(raw_name)
-                    if key:
-                        streams[key] = "\n".join(current_block)
-                
-                current_block = [line]
-                if "," in line_str:
-                    raw_name = line_str.split(",", 1)[1].strip()
-                else:
-                    raw_name = ""
-            elif line_str:
-                current_block.append(line)
-                # ਜਦੋਂ ਲਿੰਕ ਆ ਜਾਵੇ (जो # ਨਾਲ ਸ਼ੁਰੂ ਨਹੀਂ ਹੁੰਦਾ), ਬਲੌਕ ਪੂਰਾ ਮੰਨੋ
-                if not line_str.startswith("#"):
-                    if raw_name:
-                        key = normalize_name(raw_name)
-                        if key:
-                            streams[key] = "\n".join(current_block)
-                    current_block = []
-                    raw_name = ""
-        
-        print(f"Successfully loaded {len(streams)} secondary full blocks from Zio.m3u")
+        for entry in entries:
+            if not entry.strip():
+                continue
+            lines = [l.strip() for l in entry.split('\n') if l.strip()]
+            if not lines:
+                continue
+
+            header_line = lines[0]
+            raw_name = header_line.split(",", 1)[1].strip() if "," in header_line else header_line.strip()
+            key = normalize_name(raw_name)
+            if not key:
+                continue
+
+            block_lines = [l for l in lines[1:] if not l.startswith("#EXTINF:")]
+            if block_lines:
+                streams[key] = "\n".join(block_lines)
     except Exception as e:
         print("Secondary error:", e)
-
     return streams
 
 
@@ -113,15 +91,13 @@ def get_secondary_streams():
 # ==========================================
 
 def update_m3u_background():
-    global cached_m3u, cached_epg, is_updating
+    global cached_m3u, cached_epg, is_updating, channel_streams_map
 
     if is_updating:
         return
-
     is_updating = True
 
     try:
-        # 1. Star Sports tokens
         star_tokens = {}
         try:
             url = "https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json"
@@ -137,7 +113,6 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 2. Global token
         global_token = ""
         token_urls = [
             "https://allinonereborn2.online/jstrweb2/cookies.json",
@@ -157,10 +132,8 @@ def update_m3u_background():
             except Exception:
                 continue
 
-        # 3. Secondary Streams Full Blocks Map
         secondary_streams = get_secondary_streams()
 
-        # 4. DishTV LCN
         dishtv_lcn_map = {}
         try:
             url = "https://raw.githubusercontent.com/your-username/repo/main/dishtv_channels.json"
@@ -172,7 +145,6 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 5. Base Proxy URL
         base_proxy_url = "https://streamflexsmm.in/license/"
         try:
             url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
@@ -193,7 +165,6 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 6. Primary Channels
         url = "https://jjtvxweb.pages.dev/jstr4web.json"
         r = requests.get(url, timeout=6)
         channels = r.json()
@@ -202,7 +173,7 @@ def update_m3u_background():
         epg = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv>\n'
         
         fallback_counter = 1
-        matched_count = 0
+        new_streams_map = {}
 
         for ch in channels:
             raw_name = ch.get("name", "Unknown")
@@ -245,46 +216,42 @@ def update_m3u_background():
             else:
                 final_url = url
 
-            # M3U Entry
-            m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
-
-            # DRM / License Key
+            # ਲਾਇਸੈਂਸ ਕੀਅ ਤੈਅ ਕਰੋ
             if has_clearkey:
-                m3u += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.license_key={key_id}:{key_val}\n'
+                license_key = f"{key_id}:{key_val}"
             else:
-                proxy = f"{base_proxy_url}{ch_id}/"
-                m3u += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.license_key={proxy}\n'
+                license_key = f"{base_proxy_url}{ch_id}/"
 
-            # User Agent & Headers
-            m3u += '#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
-            if ch_token:
-                m3u += f'#EXTHTTP:{{"cookie":"{ch_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
-            else:
-                m3u += '#EXTHTTP:{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}\n'
-
-            # --- PRIMARY STREAM LINK ---
-            m3u += f'{final_url}\n'
-
-            # --- SECONDARY / BACKUP STREAM BLOCK (SMART MATCHING) ---
+            # ਸੈਕੰਡਰੀ ਸਟ੍ਰੀਮ ਲੱਭੋ
             sec_block = secondary_streams.get(match_name)
-            
-            # ਜੇ ਸਿੱਧਾ ਮੈਚ ਨਾ ਹੋਵੇ, ਤਾਂ ਪਾਰਸ਼ਲ (partial) ਮੈਚ ਲੱਭੋ
             if not sec_block:
                 for k, v in secondary_streams.items():
                     if match_name in k or k in match_name:
                         sec_block = v
                         break
 
-            if sec_block:
-                # ਇਹ ਸੈਕੰਡਰੀ ਦਾ ਪੂਰਾ ਬਲੌਕ ਪ੍ਰਾਇਮਰੀ ਦੇ ਹੇਠਾਂ ਜੋੜ ਦੇਵੇਗਾ
-                m3u += f'{sec_block}\n'
-                matched_count += 1
+            # ਇਸ ਚੈਨਲ ਦਾ ਡਾਟਾ ਮੈਪ ਵਿੱਚ ਸੇਵ ਕਰੋ (ਫੇਲਓਵਰ ਲਈ)
+            new_streams_map[ch_id] = {
+                "primary_url": final_url,
+                "license_key": license_key,
+                "secondary_block": sec_block
+            }
 
-            m3u += '\n'
+            # M3U ਐਂਟਰੀ (ਹੁਣ ਲਿੰਕ ਦੀ ਜਗਾ ਸਾਡਾ ਪ੍ਰੌਕਸੀ ਰੂਟ ਜਾਵੇਗਾ)
+            m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+            m3u += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
+            m3u += f'#KODIPROP:inputstream.adaptive.license_key={license_key}\n'
+            m3u += '#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
+            
+            if ch_token:
+                m3u += f'#EXTHTTP:{{"cookie":"{ch_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
+            else:
+                m3u += '#EXTHTTP:{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}\n'
 
-            # EPG Entry
+            # ਪ੍ਰੌਕਸੀ ਪਲੇਅਰ ਲਿੰਕ
+            m3u += f'http://localhost:10000/play/{ch_id}\n\n'
+
+            # EPG ਐਂਟਰੀ
             epg += f'  <channel id="{ch_id}">\n'
             epg += f'    <display-name lang="en">{clean_name}</display-name>\n'
             if logo:
@@ -295,7 +262,8 @@ def update_m3u_background():
 
         cached_m3u = m3u
         cached_epg = epg
-        print(f"Playlist updated successfully. Total fallback blocks matched: {matched_count}")
+        channel_streams_map = new_streams_map
+        print("Playlist and Smart Proxy map updated successfully.")
 
     except Exception as e:
         print(f"Background update error: {e}")
@@ -315,7 +283,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Smart Full-Block Fallback is Running!"
+    return "JioTV Smart Proxy Failover Server is Running!"
 
 
 @app.route('/playlist.m3u')
@@ -328,6 +296,35 @@ def generate_epg():
     return Response(cached_epg, mimetype='application/xml')
 
 
+# ==========================================
+# SMART FAILOVER PROXY ROUTE
+# ==========================================
+@app.route('/play/<ch_id>')
+def proxy_play(ch_id):
+    ch_data = channel_streams_map.get(ch_id)
+    if not ch_data:
+        return "Channel not found", 404
+
+    primary_url = ch_data["primary_url"]
+    
+    # ਪਹਿਲਾਂ ਪ੍ਰਾਇਮਰੀ URL ਚੈੱਕ ਕਰੋ ਕਿ ਇਹ ਕੰਮ ਕਰ ਰਿਹਾ ਹੈ ਜਾਂ ਨਹੀਂ
+    try:
+        resp = requests.head(primary_url, timeout=3)
+        if resp.status_code < 400:
+            return redirect(primary_url, code=302)
+    except Exception:
+        pass
+
+    # ਜੇ ਪ੍ਰਾਇਮਰੀ ਫੇਲ੍ਹ ਹੋ ਜਾਵੇ, ਤਾਂ ਸੈਕੰਡਰੀ ਬਲਾਕ ਵਿੱਚੋਂ ਲਿੰਕ ਕੱਢ ਕੇ ਰੀਡਾਇਰੈਕਟ ਕਰੋ
+    sec_block = ch_data["secondary_block"]
+    if sec_block:
+        for line in sec_block.split('\n'):
+            if line.startswith("http"):
+                return redirect(line.strip(), code=302)
+
+    # ਜੇ ਕੁਝ ਨਾ ਮਿਲੇ ਤਾਂ ਪ੍ਰਾਇਮਰੀ ਹੀ ਭੇਜ ਦਿਓ
+    return redirect(primary_url, code=302)
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-                    
