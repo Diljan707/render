@@ -51,9 +51,9 @@ def normalize_name(name):
         return None
 
     name = name.lower()
-    name = re.sub(r'[^a-z0-9]+', ' ', name)
+    name = re.sub(r'[^a-z0-9]+', '', name)  # ਸਾਰੇ ਸਪੇਸ ਅਤੇ ਨਿਸ਼ਾਨ ਹਟਾ ਕੇ ਪੂरा ਮੈਚ ਬਣਾਉਣਾ
 
-    return re.sub(r'\s+', ' ', name).strip()
+    return name.strip()
 
 
 # ==========================================
@@ -69,6 +69,7 @@ def get_secondary_streams():
         )
         r = requests.get(url, timeout=5)
         if r.status_code != 200:
+            print("Failed to fetch Zio.m3u, status:", r.status_code)
             return streams
 
         lines = r.text.splitlines()
@@ -87,6 +88,8 @@ def get_secondary_streams():
                     if key:
                         streams[key] = line
                     raw_name = ""
+        
+        print(f"Successfully loaded {len(streams)} secondary streams from Zio.m3u")
     except Exception as e:
         print("Secondary error:", e)
 
@@ -187,6 +190,7 @@ def update_m3u_background():
         epg = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv>\n'
         
         fallback_counter = 1
+        matched_count = 0
 
         for ch in channels:
             raw_name = ch.get("name", "Unknown")
@@ -229,9 +233,7 @@ def update_m3u_background():
             else:
                 final_url = url
 
-            # ==================================
-            # SINGLE EXTINF ENTRY (NO DUPLICATION)
-            # ==================================
+            # M3U Entry
             m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
 
             # DRM / License Key
@@ -253,11 +255,19 @@ def update_m3u_background():
             # --- PRIMARY STREAM LINK ---
             m3u += f'{final_url}\n'
 
-            # --- SECONDARY / BACKUP STREAM LINK (AUTOMATIC FALLBACK IN SAME CHANNEL) ---
+            # --- SECONDARY / BACKUP STREAM LINK (SMART MATCHING) ---
             sec_stream_url = secondary_streams.get(match_name)
+            
+            # ਜੇ ਸਿੱਧਾ ਮੈਚ ਨਾ ਹੋਵੇ, ਤਾਂ ਅਸੀਂ ਅੰشਕ (partial) ਮੈਚ ਲੱਭ ਸਕਦੇ ਹਾਂ
+            if not sec_stream_url:
+                for k, v in secondary_streams.items():
+                    if match_name in k or k in match_name:
+                        sec_stream_url = v
+                        break
+
             if sec_stream_url:
-                # ਇਹ ਲਿੰਕ ਉਸੇ ਚੈਨਲ ਦੇ ਅੰਦਰ ਐਡਵਾਂਸਡ ਪਲੇਅਰ ਲਈ ਬੈਕਅੱਪ ਤੌਰ 'ਤੇ ਕੰਮ ਕਰੇਗਾ
                 m3u += f'{sec_stream_url}\n'
+                matched_count += 1
 
             m3u += '\n'
 
@@ -272,7 +282,7 @@ def update_m3u_background():
 
         cached_m3u = m3u
         cached_epg = epg
-        print("Playlist updated successfully with Single-Entry Fallback.")
+        print(f"Playlist updated successfully. Total fallback matches found: {matched_count}")
 
     except Exception as e:
         print(f"Background update error: {e}")
@@ -292,7 +302,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Single-Entry Fallback is Running!"
+    return "JioTV M3U Server with Smart Fallback is Running!"
 
 
 @app.route('/playlist.m3u')
@@ -307,4 +317,3 @@ def generate_epg():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-                    
