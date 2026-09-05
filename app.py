@@ -57,7 +57,7 @@ def normalize_name(name):
 
 
 # ==========================================
-# SECONDARY Zio.m3u STREAM EXTRACTOR (WITHOUT EXTINF)
+# SECONDARY Zio.m3u STREAM EXTRACTOR (PROPER NEWLINES)
 # ==========================================
 
 def get_secondary_streams():
@@ -82,9 +82,9 @@ def get_secondary_streams():
                 if current_block and raw_name:
                     key = normalize_name(raw_name)
                     if key:
-                        # `#EXTINF` ਨੂੰ ਛੱਡ ਕੇ ਬਾਕੀ ਪ੍ਰੋਪਰਟੀਜ਼ ਅਤੇ ਲਿੰਕ ਰੱਖਣਾ
-                        block_filtered = [l for l in current_block if not l.startswith("#EXTINF:")]
-                        streams[key] = "\n".join(block_filtered)
+                        block_filtered = [l.strip() for l in current_block if l.strip() and not l.startswith("#EXTINF:")]
+                        if block_filtered:
+                            streams[key] = "\n".join(block_filtered)
                 
                 current_block = [line]
                 if "," in line_str:
@@ -92,17 +92,18 @@ def get_secondary_streams():
                 else:
                     raw_name = ""
             elif line_str:
-                current_block.append(line)
+                current_block.append(line_str)
                 if not line_str.startswith("#"):
                     if raw_name:
                         key = normalize_name(raw_name)
                         if key:
-                            block_filtered = [l for l in current_block if not l.startswith("#EXTINF:")]
-                            streams[key] = "\n".join(block_filtered)
+                            block_filtered = [l.strip() for l in current_block if l.strip() and not l.startswith("#EXTINF:")]
+                            if block_filtered:
+                                streams[key] = "\n".join(block_filtered)
                     current_block = []
                     raw_name = ""
         
-        print(f"Successfully loaded {len(streams)} secondary stream blocks from Zio.m3u")
+        print(f"Successfully loaded {len(streams)} clean secondary streams with correct lines")
     except Exception as e:
         print("Secondary error:", e)
 
@@ -268,7 +269,7 @@ def update_m3u_background():
             # --- PRIMARY STREAM LINK ---
             m3u += f'{final_url}\n'
 
-            # --- SECONDARY / BACKUP STREAM BLOCK (WITHOUT EXTINF) ---
+            # --- SECONDARY / BACKUP STREAM BLOCK ---
             sec_block = secondary_streams.get(match_name)
             
             if not sec_block:
@@ -314,7 +315,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Clean Fallback Streams is Running!"
+    return "JioTV M3U Server with Clean Formatted Fallback Streams is Running!"
 
 
 @app.route('/playlist.m3u')
