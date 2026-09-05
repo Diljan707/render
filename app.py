@@ -11,9 +11,9 @@ cached_epg = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n</tv>'
 is_updating = False
 
 
-# ==============================
+# ==========================================
 # COMMON NAME FILTER
-# ==============================
+# ==========================================
 
 regional_langs = [
     'tamil',
@@ -27,57 +27,147 @@ regional_langs = [
 ]
 
 
-def clean_and_filter_name(raw_name):
-    if not raw_name:
+def clean_and_filter_name(name):
+    if not name:
         return None
 
-    name = raw_name.strip()
-    name_lower = name.lower()
+    name = name.strip()
+    low = name.lower()
 
-    # Regional channels skip
-    for lang in regional_langs:
-        if re.search(rf'\b{re.escape(lang)}\b', name_lower):
-            return None
+    if any(re.search(rf'\b{re.escape(x)}\b', low)
+           for x in regional_langs):
+        return None
 
-    # Hindi remove
-    name = re.sub(r'\s+Hindi\b', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+Hindi\b', '', name,
+                  flags=re.IGNORECASE)
 
-    # Extra spaces clean
-    name = re.sub(r'\s+', ' ', name).strip()
+    return re.sub(r'\s+', ' ', name).strip()
 
-    return name
-
-
-# ==============================
-# NORMALIZED MATCH NAME
-# ==============================
 
 def normalize_name(name):
-    """
-    Primary te secondary channel names nu
-    same format ch leke aunda hai.
-    """
+    name = clean_and_filter_name(name)
 
-    cleaned = clean_and_filter_name(name)
-
-    if not cleaned:
+    if not name:
         return None
 
-    # lowercase
-    cleaned = cleaned.lower()
+    name = name.lower()
+    name = re.sub(r'[^a-z0-9]+', ' ', name)
 
-    # punctuation remove
-    cleaned = re.sub(r'[^a-z0-9]+', ' ', cleaned)
-
-    # extra spaces
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-
-    return cleaned
+    return re.sub(r'\s+', ' ', name).strip()
 
 
-# ==============================
+# ==========================================
+# SECONDARY Zio.m3u
+# KEEP COMPLETE ORIGINAL BLOCK
+# ==========================================
+
+def get_secondary_streams():
+
+    streams = {}
+
+    try:
+        url = (
+            "https://raw.githubusercontent.com/"
+            "Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
+        )
+
+        r = requests.get(url, timeout=5)
+
+        if r.status_code != 200:
+            return streams
+
+        lines = r.text.splitlines()
+
+        block = []
+        raw_name = ""
+
+        for line in lines:
+            line = line.rstrip()
+
+            if line.startswith("#EXTINF:"):
+
+                # Save previous block
+                if block and raw_name:
+                    key = normalize_name(raw_name)
+
+                    if key:
+                        streams[key] = block[:]
+
+                block = [line]
+
+                if "," in line:
+                    raw_name = line.split(",", 1)[1].strip()
+                else:
+                    raw_name = ""
+
+            elif block:
+                block.append(line)
+
+        # Last block
+        if block and raw_name:
+            key = normalize_name(raw_name)
+
+            if key:
+                streams[key] = block[:]
+
+    except Exception as e:
+        print("Secondary error:", e)
+
+    return streams
+
+
+# ==========================================
+# MODIFY SECONDARY EXTINF
+# ONLY NAME + LCN FROM PRIMARY
+# EVERYTHING ELSE ORIGINAL
+# ==========================================
+
+def make_secondary_block(block, primary_name, ch_no):
+
+    result = block[:]
+
+    if not result:
+        return result
+
+    extinf = result[0]
+
+    # Replace channel name
+    if "," in extinf:
+        extinf = extinf.split(",", 1)[0] + "," + primary_name
+    else:
+        extinf += "," + primary_name
+
+    # Replace existing ch-number
+    if re.search(r'ch-number="[^"]*"', extinf,
+                 flags=re.IGNORECASE):
+
+        extinf = re.sub(
+            r'ch-number="[^"]*"',
+            f'ch-number="{ch_no}"',
+            extinf,
+            flags=re.IGNORECASE
+        )
+
+    else:
+        # Add primary LCN if secondary doesn't have it
+        if " " in extinf:
+            p = extinf.find(" ")
+            extinf = (
+                extinf[:p + 1]
+                + f'ch-number="{ch_no}" '
+                + extinf[p + 1:]
+            )
+        else:
+            extinf += f' ch-number="{ch_no}"'
+
+    result[0] = extinf
+
+    return result
+
+
+# ==========================================
 # BACKGROUND UPDATE
-# ==============================
+# ==========================================
 
 def update_m3u_background():
 
@@ -90,69 +180,54 @@ def update_m3u_background():
 
     try:
 
-        # ==========================================
-        # 1. STAR SPORTS DYNAMIC TOKENS
-        # ==========================================
-
-        COOKIE_STAR_SPORTS = (
-            "https://allinonereborn2.online/"
-            "jtv-fetch/jstarcookie/cookie.json"
-        )
+        # ======================================
+        # STAR SPORTS TOKENS
+        # ======================================
 
         star_tokens = {}
 
         try:
-
-            res = requests.get(
-                COOKIE_STAR_SPORTS,
-                timeout=6
+            url = (
+                "https://allinonereborn2.online/"
+                "jtv-fetch/jstarcookie/cookie.json"
             )
 
-            if res.status_code == 200:
+            r = requests.get(url, timeout=6)
 
-                data = res.json()
+            if r.status_code == 200:
 
-                if data and "failed_results" in data:
+                data = r.json()
 
-                    for item in data["failed_results"]:
+                for item in data.get("failed_results", []):
 
-                        ch_id_str = str(
-                            item.get("channel_id")
+                    ch_id = str(item.get("channel_id", ""))
+
+                    final_url = (
+                        item.get("error_details", {})
+                        .get("final_url", "")
+                    )
+
+                    m = re.search(
+                        r'__hdnea__=([^&]+)',
+                        final_url
+                    )
+
+                    if m:
+                        star_tokens[ch_id] = (
+                            f"__hdnea__={m.group(1)}"
                         )
-
-                        err_details = item.get(
-                            "error_details",
-                            {}
-                        )
-
-                        final_url = err_details.get(
-                            "final_url",
-                            ""
-                        )
-
-                        if "__hdnea__=" in final_url:
-
-                            match = re.search(
-                                r'__hdnea__=([^&]+)',
-                                final_url
-                            )
-
-                            if match:
-
-                                star_tokens[ch_id_str] = (
-                                    f"__hdnea__={match.group(1)}"
-                                )
 
         except Exception:
             pass
 
 
-        # ==========================================
-        # 2. GLOBAL FALLBACK TOKEN
-        # ==========================================
+        # ======================================
+        # GLOBAL TOKEN
+        # ======================================
+
+        global_token = ""
 
         token_urls = [
-
             "https://allinonereborn2.online/"
             "jstrweb2/cookies.json",
 
@@ -163,26 +238,19 @@ def update_m3u_background():
             "jstrweb4/cookies.json"
         ]
 
-        global_token = ""
-
         for url in token_urls:
 
             try:
+                r = requests.get(url, timeout=3)
 
-                res = requests.get(
-                    url,
-                    timeout=3
-                )
+                if r.status_code == 200:
 
-                if res.status_code == 200:
-
-                    for item in res.json():
+                    for item in r.json():
 
                         if (
                             isinstance(item, dict)
-                            and "cookie" in item
+                            and item.get("cookie")
                         ):
-
                             global_token = item["cookie"]
                             break
 
@@ -193,104 +261,45 @@ def update_m3u_background():
                 continue
 
 
-        # ==========================================
-        # 3. SECONDARY Zio.m3u
-        # ==========================================
+        # ======================================
+        # SECONDARY
+        # ======================================
 
-        secondary_streams = {}
-
-        try:
-
-            sec_url = (
-                "https://raw.githubusercontent.com/"
-                "Sflex0719/STBPLUS/refs/heads/main/"
-                "Zio.m3u"
-            )
-
-            sec_res = requests.get(
-                sec_url,
-                timeout=5
-            )
-
-            if sec_res.status_code == 200:
-
-                lines = sec_res.text.splitlines()
-
-                current_raw_name = ""
-
-                for line in lines:
-
-                    line = line.strip()
-
-                    if line.startswith("#EXTINF:"):
-
-                        if "," in line:
-
-                            current_raw_name = (
-                                line.split(",", 1)[1].strip()
-                            )
-
-                    elif (
-                        line
-                        and not line.startswith("#")
-                    ):
-
-                        if current_raw_name:
-
-                            # SAME FILTER AS PRIMARY
-                            match_name = normalize_name(
-                                current_raw_name
-                            )
-
-                            if match_name:
-
-                                secondary_streams[
-                                    match_name
-                                ] = line
-
-                            current_raw_name = ""
-
-        except Exception:
-            pass
+        secondary_streams = get_secondary_streams()
 
 
-        # ==========================================
-        # 4. DISHTV LCN
-        # ==========================================
+        # ======================================
+        # DISHTV LCN
+        # ======================================
 
         dishtv_lcn_map = {}
 
         try:
-
-            dishtv_url = (
+            url = (
                 "https://raw.githubusercontent.com/"
                 "your-username/repo/main/"
                 "dishtv_channels.json"
             )
 
-            d_res = requests.get(
-                dishtv_url,
-                timeout=4
-            )
+            r = requests.get(url, timeout=4)
 
-            if d_res.status_code == 200:
+            if r.status_code == 200:
 
-                d_data = d_res.json()
+                data = r.json()
 
-                if isinstance(d_data, dict):
-
+                if isinstance(data, dict):
                     dishtv_lcn_map = {
                         str(k).lower(): str(v)
-                        for k, v in d_data.items()
+                        for k, v in data.items()
                     }
 
         except Exception:
             pass
 
 
-        # ==========================================
-        # 5. BASE PROXY URL
-        # ==========================================
+        # ======================================
+        # BASE PROXY URL
+        # ======================================
 
         base_proxy_url = (
             "https://streamflexsmm.in/license/"
@@ -298,77 +307,66 @@ def update_m3u_background():
 
         try:
 
-            target_m3u_url = (
+            url = (
                 "https://raw.githubusercontent.com/"
                 "Sflex0719/STBPLUS/main/"
                 "ZioMobile.m3u"
             )
 
-            res = requests.get(
-                target_m3u_url,
-                timeout=3
-            )
+            r = requests.get(url, timeout=3)
 
-            if res.status_code == 200:
+            if r.status_code == 200:
 
-                for line in res.text.splitlines():
+                for line in r.text.splitlines():
 
-                    if "license_key=" in line:
+                    if "license_key=" not in line:
+                        continue
 
-                        l_key = (
-                            line.split(
-                                "license_key=",
-                                1
-                            )[1].strip()
+                    key = line.split(
+                        "license_key=", 1
+                    )[1].strip()
+
+                    if not key or key == "null:null":
+                        continue
+
+                    m = re.search(
+                        r'(https?://[^\s]+?/)(?:\d+/)?$',
+                        key
+                    )
+
+                    if m:
+                        base_proxy_url = m.group(1)
+                    else:
+                        base_proxy_url = re.sub(
+                            r'\d+/?$',
+                            '',
+                            key
                         )
 
-                        if (
-                            l_key
-                            and l_key != "null:null"
-                        ):
-
-                            match = re.search(
-                                r'(https?://[^\s]+?/)(?:\d+/)?$',
-                                l_key
-                            )
-
-                            if match:
-
-                                base_proxy_url = (
-                                    match.group(1)
-                                )
-
-                            else:
-
-                                base_proxy_url = re.sub(
-                                    r'\d+/?$',
-                                    '',
-                                    l_key
-                                )
-
-                            break
+                    break
 
         except Exception:
             pass
 
 
-        # ==========================================
-        # 6. PRIMARY CHANNELS
-        # ==========================================
+        # ======================================
+        # PRIMARY CHANNELS
+        # ======================================
 
-        channels_res = requests.get(
-            "https://jjtvxweb.pages.dev/jstr4web.json",
-            timeout=6
+        url = (
+            "https://jjtvxweb.pages.dev/"
+            "jstr4web.json"
         )
 
-        channels = channels_res.json()
+        r = requests.get(url, timeout=6)
+        channels = r.json()
 
         m3u = (
             '#EXTM3U '
             'url-tvg="http://localhost:10000/epg.xml"\n'
         )
 
-        epg_xml = (
+        epg = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<!DOCTYPE tv SYSTEM "xmltv.dtd">\n'
             '<tv>\n'
@@ -377,60 +375,33 @@ def update_m3u_background():
         fallback_counter = 1
 
 
-        # ==========================================
+        # ======================================
         # CHANNEL LOOP
-        # ==========================================
+        # ======================================
 
         for ch in channels:
 
-            raw_name = ch.get(
-                'name',
-                'Unknown'
-            )
+            raw_name = ch.get("name", "Unknown")
+            ch_id = str(ch.get("id", ""))
 
-            ch_id = str(
-                ch.get('id', '')
-            )
-
-
-            # ======================================
-            # SAME FILTER FOR PRIMARY
-            # ======================================
-
-            clean_name = clean_and_filter_name(
-                raw_name
-            )
+            clean_name = clean_and_filter_name(raw_name)
 
             if not clean_name:
                 continue
 
-
-            match_name = normalize_name(
-                raw_name
-            )
+            match_name = normalize_name(raw_name)
 
             if not match_name:
                 continue
 
+            url = ch.get("url", "")
+            logo = ch.get("logo", "")
+            category = ch.get("category", "Unknown")
 
-            url = ch.get(
-                'url',
-                ''
-            )
+            if not url:
+                continue
 
-            logo = ch.get(
-                'logo',
-                ''
-            )
-
-            category = ch.get(
-                'category',
-                'Unknown'
-            )
-
-            group = (
-                f"JioTV+ ▶ | {category}"
-            )
+            group = f"JioTV+ ▶ | {category}"
 
             group_logo = (
                 "https://i.postimg.cc/"
@@ -438,13 +409,9 @@ def update_m3u_background():
             )
 
 
-            if not url:
-                continue
-
-
-            # ======================================
+            # ==================================
             # LCN
-            # ======================================
+            # ==================================
 
             name_lower = raw_name.lower()
 
@@ -454,32 +421,20 @@ def update_m3u_background():
             )
 
             if not ch_no:
-
-                ch_no = str(
-                    fallback_counter
-                )
-
+                ch_no = str(fallback_counter)
                 fallback_counter += 1
-
 
             formatted_name = (
                 f"{ch_no} - {clean_name}"
             )
 
 
-            # ======================================
+            # ==================================
             # CLEARKEY
-            # ======================================
+            # ==================================
 
-            key_id = ch.get(
-                'keyId',
-                ''
-            )
-
-            key_val = ch.get(
-                'key',
-                ''
-            )
+            key_id = ch.get("keyId", "")
+            key_val = ch.get("key", "")
 
             has_clearkey = (
                 key_id
@@ -489,38 +444,32 @@ def update_m3u_background():
             )
 
 
-            # ======================================
+            # ==================================
             # TOKEN
-            # ======================================
+            # ==================================
 
             ch_token = (
                 star_tokens.get(ch_id)
                 or global_token
             )
 
-
             if ch_token:
 
-                if '?' not in url:
+                separator = (
+                    "&" if "?" in url else "?"
+                )
 
-                    final_url = (
-                        f"{url}?{ch_token}"
-                    )
-
-                else:
-
-                    final_url = (
-                        f"{url}&{ch_token}"
-                    )
+                final_url = (
+                    f"{url}{separator}{ch_token}"
+                )
 
             else:
-
                 final_url = url
 
 
-            # ======================================
-            # PRIMARY M3U
-            # ======================================
+            # ==================================
+            # PRIMARY EXTINF
+            # ==================================
 
             m3u += (
                 f'#EXTINF:-1 '
@@ -533,11 +482,11 @@ def update_m3u_background():
             )
 
 
-            if has_clearkey:
+            # ==================================
+            # PRIMARY DRM
+            # ==================================
 
-                license_key = (
-                    f"{key_id}:{key_val}"
-                )
+            if has_clearkey:
 
                 m3u += (
                     '#KODIPROP:'
@@ -548,14 +497,13 @@ def update_m3u_background():
                 m3u += (
                     '#KODIPROP:'
                     'inputstream.adaptive.license_key='
-                    f'{license_key}\n'
+                    f'{key_id}:{key_val}\n'
                 )
 
             else:
 
-                custom_license_proxy = (
-                    f"{base_proxy_url}"
-                    f"{ch_id}/"
+                proxy = (
+                    f"{base_proxy_url}{ch_id}/"
                 )
 
                 m3u += (
@@ -567,15 +515,18 @@ def update_m3u_background():
                 m3u += (
                     '#KODIPROP:'
                     'inputstream.adaptive.license_key='
-                    f'{custom_license_proxy}\n'
+                    f'{proxy}\n'
                 )
 
+
+            # ==================================
+            # PRIMARY HEADERS
+            # ==================================
 
             m3u += (
                 '#EXTVLCOPT:http-user-agent='
                 'plaYtv/7.1.5\n'
             )
-
 
             if ch_token:
 
@@ -594,112 +545,78 @@ def update_m3u_background():
                     '"Referer":"https://www.jiotv.com/"}\n'
                 )
 
+            m3u += f'{final_url}\n\n'
 
-            m3u += (
-                f'{final_url}\n'
+
+            # ==================================
+            # SECONDARY BACKUP
+            # ==================================
+
+            sec_block = secondary_streams.get(
+                match_name
             )
 
+            if sec_block:
 
-            # ======================================
-            # SECONDARY MATCH
-            # ======================================
-
-            sec_stream_url = (
-                secondary_streams.get(
-                    match_name
-                )
-            )
-
-
-            if sec_stream_url:
-
-                m3u += (
-                    f'#EXTINF:-1 '
-                    f'tvg-id="{ch_id}" '
-                    f'ch-number="{ch_no}" '
-                    f'group-title="{group}" '
-                    f'group-logo="{group_logo}" '
-                    f'tvg-logo="{logo}",'
-                    f'{formatted_name} [Backup]\n'
+                backup = make_secondary_block(
+                    sec_block,
+                    formatted_name,
+                    ch_no
                 )
 
-                m3u += (
-                    f'{sec_stream_url}\n'
-                )
+                for line in backup:
+                    m3u += line + '\n'
+
+                m3u += '\n'
 
 
-            m3u += '\n'
-
-
-            # ======================================
+            # ==================================
             # EPG
-            # ======================================
+            # ==================================
 
-            epg_xml += (
+            epg += (
                 f'  <channel id="{ch_id}">\n'
-            )
-
-            epg_xml += (
                 f'    <display-name lang="en">'
                 f'{clean_name}'
                 f'</display-name>\n'
             )
 
             if logo:
-
-                epg_xml += (
+                epg += (
                     f'    <icon src="{logo}" />\n'
                 )
 
-            epg_xml += (
-                '  </channel>\n'
-            )
+            epg += '  </channel>\n'
 
 
-        epg_xml += '</tv>'
-
-
-        # ==========================================
-        # CACHE UPDATE
-        # ==========================================
+        epg += '</tv>'
 
         cached_m3u = m3u
-        cached_epg = epg_xml
+        cached_epg = epg
 
-
-        print(
-            "Playlist updated successfully."
-        )
+        print("Playlist updated successfully.")
 
 
     except Exception as e:
-
-        print(
-            f"Background update error: {e}"
-        )
-
+        print(f"Background update error: {e}")
 
     finally:
-
         is_updating = False
 
 
-# ==============================================
-# PERIODIC UPDATE - EVERY 3 MINUTES
-# ==============================================
+# ==========================================
+# PERIODIC UPDATE
+# ==========================================
 
 def periodic_updater():
 
     while True:
-
         update_m3u_background()
-
         time.sleep(180)
 
 
 # Initial update
 update_m3u_background()
-
 
 threading.Thread(
     target=periodic_updater,
@@ -707,9 +624,9 @@ threading.Thread(
 ).start()
 
 
-# ==============================================
+# ==========================================
 # FLASK ROUTES
-# ==============================================
+# ==========================================
 
 @app.route('/')
 def home():
@@ -738,9 +655,9 @@ def generate_epg():
     )
 
 
-# ==============================================
+# ==========================================
 # START SERVER
-# ==============================================
+# ==========================================
 
 if __name__ == '__main__':
 
