@@ -34,25 +34,30 @@ def clean_and_filter_name(name):
     name = name.strip()
     low = name.lower()
 
+    # ਰੀਜਨਲ ਭਾਸ਼ਾਵਾਂ ਵਾਲੇ ਚੈਨਲ ਫਿਲਟਰ ਕਰਨਾ
     if any(re.search(rf'\b{re.escape(x)}\b', low) for x in regional_langs):
         return None
 
+    # ਨਾਮ ਵਿੱਚੋਂ 'Hindi' ਹਟਾਉਣਾ
     name = re.sub(r'\s+Hindi\b', '', name, flags=re.IGNORECASE)
+
+    # ਨਾਮ ਵਿੱਚੋਂ 'SD' ਹਟਾਉਣਾ
     name = re.sub(r'\bSD\b', '', name, flags=re.IGNORECASE)
 
     return re.sub(r'\s+', ' ', name).strip()
 
 
 def normalize_name(name):
-    if not name:
+    cleaned = clean_and_filter_name(name)
+    if not cleaned:
         return None
-    name = name.lower()
+    name = cleaned.lower()
     name = re.sub(r'[^a-z0-9]+', '', name)
     return name.strip()
 
 
 # ==========================================
-# SECONDARY Zio.m3u STREAM EXTRACTOR
+# SECONDARY Zio.m3u STREAM EXTRACTOR (WITH FILTERS)
 # ==========================================
 
 def get_secondary_streams():
@@ -79,13 +84,16 @@ def get_secondary_streams():
                     raw_name = ""
             elif line and not line.startswith("#"):
                 if raw_name:
+                    # ਪ੍ਰਾਇਮਰੀ ਵਾਲੇ ਫਿਲਟਰ ਹੀ ਸੈਕੰਡਰੀ ਉੱਤੇ ਲਾਗੂ ਕੀਤੇ ਹਨ
                     clean_raw = clean_and_filter_name(raw_name)
                     if clean_raw:
-                        streams[normalize_name(clean_raw)] = line
-                        streams[clean_raw.lower()] = line
+                        key = normalize_name(raw_name)
+                        if key:
+                            streams[key] = line
+                            streams[clean_raw.lower()] = line
                     raw_name = ""
         
-        print(f"Successfully loaded {len(streams)} secondary streams from Zio.m3u")
+        print(f"Successfully loaded {len(streams)} filtered secondary streams from Zio.m3u")
     except Exception as e:
         print("Secondary error:", e)
 
@@ -93,7 +101,7 @@ def get_secondary_streams():
 
 
 # ==========================================
-# DISHTV LCN FETCHER FROM GITHUB (ULTRA-FLEXIBLE)
+# DISHTV LCN FETCHER FROM GITHUB
 # ==========================================
 
 def get_dishtv_lcn_map():
@@ -122,17 +130,14 @@ def get_dishtv_lcn_map():
                     else:
                         continue
                     
-                    # ਸਾਰੇ ਵੇਰੀਐਂਟ ਸੇਵ ਕਰੋ ताकि ਮੈਚਿੰਗ ਵਿੱਚ ਕੋਈ ਕਮੀ ਨਾ ਰਹੇ
-                    clean_ch = clean_and_filter_name(ch_name)
-                    if clean_ch:
-                        lcn_map[normalize_name(clean_ch)] = lcn_num
-                        lcn_map[clean_ch.lower()] = lcn_num
-                    lcn_map[normalize_name(ch_name)] = lcn_num
+                    norm_k = normalize_name(ch_name)
+                    if norm_k:
+                        lcn_map[norm_k] = lcn_num
                     lcn_map[ch_name.lower()] = lcn_num
                     
             print(f"Successfully loaded {len(lcn_map)} LCN mappings from GitHub.")
     except Exception as e:
-        print("DishTV Lcn fetch error:", e)
+        print("DishTV LCN fetch error:", e)
     return lcn_map
 
 
@@ -185,7 +190,7 @@ def update_m3u_background():
             except Exception:
                 continue
 
-        # 3. Secondary Streams Map
+        # 3. Secondary Streams Map (Filtered)
         secondary_streams = get_secondary_streams()
 
         # 4. DishTV LCN Map from GitHub
@@ -233,10 +238,7 @@ def update_m3u_background():
                 continue
 
             match_name = normalize_name(raw_name)
-            clean_match = normalize_name(clean_name)
             lower_name = clean_name.lower()
-            raw_lower = raw_name.lower()
-            
             if not match_name:
                 continue
 
@@ -250,17 +252,31 @@ def update_m3u_background():
             group = f"JioTV+ ▶ | {category}"
             group_logo = "https://i.postimg.cc/52qG6sKt/STREAMXi.png"
 
-            # --- DISHTV LCN MATCHING (POWERFUL CHECK) ---
-            ch_no = (
-                dishtv_lcn_map.get(clean_match) or 
-                dishtv_lcn_map.get(match_name) or 
-                dishtv_lcn_map.get(lower_name) or 
-                dishtv_lcn_map.get(raw_lower)
+            # --- MERGE SECONDARY STREAM AS PRIMARY ---
+            sec_stream_url = (
+                secondary_streams.get(match_name) or 
+                secondary_streams.get(lower_name)
             )
-            
+            if not sec_stream_url:
+                for k, v in secondary_streams.items():
+                    if match_name in k or k in match_name or lower_name in k or k in lower_name:
+                        sec_stream_url = v
+                        break
+
+            if sec_stream_url:
+                target_url = sec_stream_url
+                merged_count += 1
+            else:
+                target_url = primary_url
+
+            # --- DISHTV LCN MATCHING (GITHUB DATA) ---
+            ch_no = (
+                dishtv_lcn_map.get(match_name) or 
+                dishtv_lcn_map.get(lower_name)
+            )
             if not ch_no:
                 for k, v in dishtv_lcn_map.items():
-                    if k in clean_match or clean_match in k or k in match_name or match_name in k or k in lower_name or lower_name in k:
+                    if match_name in k or k in match_name or lower_name in k or k in lower_name:
                         ch_no = v
                         break
             
@@ -271,26 +287,6 @@ def update_m3u_background():
                 fallback_counter += 1
 
             formatted_name = f"{ch_no} - {clean_name}"
-
-            # --- MERGE SECONDARY STREAM AS PRIMARY ---
-            sec_stream_url = (
-                secondary_streams.get(clean_match) or 
-                secondary_streams.get(match_name) or 
-                secondary_streams.get(lower_name) or 
-                secondary_streams.get(raw_lower)
-            )
-            
-            if not sec_stream_url:
-                for k, v in secondary_streams.items():
-                    if k in clean_match or clean_match in k or k in match_name or match_name in k or k in lower_name or lower_name in k:
-                        sec_stream_url = v
-                        break
-
-            if sec_stream_url:
-                target_url = sec_stream_url
-                merged_count += 1
-            else:
-                target_url = primary_url
 
             key_id = ch.get("keyId", "")
             key_val = ch.get("key", "")
@@ -322,7 +318,7 @@ def update_m3u_background():
             else:
                 m3u += '#EXTHTTP:{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}\n'
 
-            # --- FINAL MERGED STREAM LINK ---
+            # --- STREAM LINK ---
             m3u += f'{final_url}\n\n'
 
             # EPG Entry
@@ -336,7 +332,7 @@ def update_m3u_background():
 
         cached_m3u = m3u
         cached_epg = epg
-        print(f"Update finished! LCN Matched from GitHub: {matched_lcn_count}, Secondary Merged: {merged_count}")
+        print(f"Update finished! GitHub LCN Matched: {matched_lcn_count}, Secondary Merged: {merged_count}")
 
     except Exception as e:
         print(f"Background update error: {e}")
@@ -356,7 +352,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Fixed LCN is Running!"
+    return "JioTV M3U Server with Filtered Secondary & GitHub LCN is Running!"
 
 
 @app.route('/playlist.m3u')
