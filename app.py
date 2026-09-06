@@ -65,36 +65,34 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te پورا original block store karo
-        secondary_streams = {}
+        # 3. Secondary Zio.m3u fetch karo te poora block (EXTINF, KODIPROP, URL) store karo
+        secondary_channels = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
             sec_res = requests.get(sec_url, timeout=5)
             if sec_res.status_code == 200:
                 lines = sec_res.text.splitlines()
-                current_block = []
-                current_raw_name = ""
+                current_extinf = ""
+                current_props = []
                 for line in lines:
-                    line_str = line.strip()
-                    if line_str.startswith("#EXTINF:"):
-                        if current_raw_name and current_block:
-                            processed_name = clean_and_filter_name(current_raw_name)
-                            if processed_name:
-                                secondary_streams[processed_name.lower()] = "\n".join(current_block)
-                        current_block = [line_str]
-                        if "," in line_str:
-                            current_raw_name = line_str.split(",")[-1].strip()
-                    elif line_str.startswith("#"):
-                        if current_block:
-                            current_block.append(line_str)
-                    elif line_str and not line_str.startswith("#"):
-                        if current_block:
-                            current_block.append(line_str)
-                            processed_name = clean_and_filter_name(current_raw_name)
-                            if processed_name:
-                                secondary_streams[processed_name.lower()] = "\n".join(current_block)
-                            current_block = []
-                            current_raw_name = ""
+                    line = line.strip()
+                    if line.startswith("#EXTINF:"):
+                        current_extinf = line
+                        current_props = []
+                    elif line.startswith("#KODIPROP:") or line.startswith("#EXTVLCOPT:") or line.startswith("#EXTHTTP:"):
+                        current_props.append(line)
+                    elif line and not line.startswith("#"):
+                        if current_extinf:
+                            if "," in current_extinf:
+                                raw_sec_name = current_extinf.split(",")[-1].strip()
+                                processed_name = clean_and_filter_name(raw_sec_name)
+                                if processed_name:
+                                    secondary_channels[processed_name.lower()] = {
+                                        "props": current_props,
+                                        "url": line
+                                    }
+                            current_extinf = ""
+                            current_props = []
         except Exception:
             pass
 
@@ -110,7 +108,7 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 5. Base Proxy URL
+        # 5. Base Proxy URL for Primary streams
         base_proxy_url = "https://streamflexsmm.in/license/"
         try:
             target_m3u_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
@@ -134,6 +132,7 @@ def update_m3u_background():
         channels = channels_res.json()
         
         m3u = '#EXTM3U\n'
+        
         fallback_counter = 1
         
         for ch in channels:
@@ -168,9 +167,8 @@ def update_m3u_background():
             ch_token = star_tokens.get(ch_id) or global_token
             final_url = f"{url}?{ch_token}" if ch_token and '?' not in url else f"{url}&{ch_token}" if ch_token else url
             
-            # --- Primary Stream Entry (New Format) ---
+            # Primary Stream Entry
             m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
-            m3u += f'#KODIPROP:inputstream.adaptive.manifest_type=mpd\n'
             
             if has_clearkey:
                 license_key = f"{key_id}:{key_val}"
@@ -189,10 +187,16 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # --- Secondary Backup Stream Entry (Zio Original Format) ---
-            sec_block = secondary_streams.get(clean_name.lower())
-            if sec_block:
-                m3u += f'\n{sec_block}\n'
+            # Secondary Backup Stream Entry (Using Zio's own native properties & license proxy to prevent DRM error)
+            sec_data = secondary_channels.get(clean_name.lower())
+            if sec_data:
+                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+                
+                # Zio دیاں ਆਪਣੀਆਂ original properties (license keys/proxies) ਲੱਗਣਗੀਆਂ
+                for prop in sec_data["props"]:
+                    m3u += f'{prop}\n'
+                
+                m3u += f'{sec_data["url"]}\n'
 
             m3u += '\n'
 
@@ -212,7 +216,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Primary Custom ClearKey + Secondary Original Zio) is Running!"
+    return "JioTV M3U Server (Native Zio Properties Fixed) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -220,4 +224,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-            
+                            
