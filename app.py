@@ -61,12 +61,10 @@ def update_m3u_background():
 
         def clean_and_filter_name(raw_name):
             name_lower = raw_name.lower()
-            # Regional check
             for lang in regional_langs:
                 if lang in name_lower:
-                    return None  # Skip this channel
+                    return None
             
-            # Remove " Hindi"
             cleaned = raw_name
             if " hindi" in name_lower:
                 cleaned = re.sub(r'\s+Hindi\b', '', raw_name, flags=re.IGNORECASE)
@@ -269,5 +267,9 @@ def update_m3u_background():
             raw_name = ch.get('name', 'Unknown')
             ch_id = str(ch.get('id', ''))
             
-            # Apply same filter & cleaning function
-            clean_name = clean_and_filter_name(raw_na
+            clean_name = clean_and_filter_name(raw_name)
+            if not clean_name:
+                continue  
+                
+            url = ch.get('url', '')
+            logo 
