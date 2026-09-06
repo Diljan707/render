@@ -56,22 +56,15 @@ def update_m3u_background():
             except Exception:
                 continue
 
-        # Common Regional filter and cleaning function
+        # Regional filter function (Hindi names kept as requested)
         regional_langs = ['tamil', 'telugu', 'malayalam', 'marathi', 'bengali', 'kannada', 'gujarati', 'odia']
 
         def clean_and_filter_name(raw_name):
             name_lower = raw_name.lower()
-            # Regional check
             for lang in regional_langs:
                 if lang in name_lower:
-                    return None  # Skip this channel
-            
-            # Remove " Hindi"
-            cleaned = raw_name
-            if " hindi" in name_lower:
-                cleaned = re.sub(r'\s+Hindi\b', '', raw_name, flags=re.IGNORECASE)
-            
-            return cleaned.strip()
+                    return None  
+            return raw_name.strip()
 
         # 3. Secondary Zio.m3u fetch karo te ohi filter lagao
         secondary_streams = {}
@@ -139,7 +132,6 @@ def update_m3u_background():
             raw_name = ch.get('name', 'Unknown')
             ch_id = str(ch.get('id', ''))
             
-            # Apply same filter & cleaning function
             clean_name = clean_and_filter_name(raw_name)
             if not clean_name:
                 continue
@@ -188,12 +180,20 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Exact same group, name, ID, and LCN for seamless folding)
+            # Secondary Backup Stream Entry (Same Name, LCN, ID, Group & Exact License Key applied)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.license_key={base_proxy_url}{ch_id}/\n'
+                
+                if has_clearkey:
+                    license_key = f"{key_id}:{key_val}"
+                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
+                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={license_key}\n'
+                else:
+                    custom_license_proxy = f"{base_proxy_url}{ch_id}/"
+                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
+                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={custom_license_proxy}\n'
+                
                 m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
                 m3u += f'{sec_stream_url}\n'
 
@@ -225,7 +225,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Auto-Folding Support is Running!"
+    return "JioTV M3U Server with Synced License Keys & Auto-Folding is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -237,4 +237,4 @@ def generate_epg():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-            
+    
