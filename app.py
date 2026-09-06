@@ -99,7 +99,7 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 5. Base Proxy URL (fallback ਲਈ ਜੇ ਕਲੀਅਰਕੀ ਨਾ ਹੋਵੇ)
+        # 5. Base Proxy URL
         base_proxy_url = "https://streamflexsmm.in/license/"
         try:
             target_m3u_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
@@ -123,7 +123,6 @@ def update_m3u_background():
         channels = channels_res.json()
         
         m3u = '#EXTM3U\n'
-        
         fallback_counter = 1
         
         for ch in channels:
@@ -158,8 +157,9 @@ def update_m3u_background():
             ch_token = star_tokens.get(ch_id) or global_token
             final_url = f"{url}?{ch_token}" if ch_token and '?' not in url else f"{url}&{ch_token}" if ch_token else url
             
-            # Primary Stream Entry
+            # --- Primary Stream Entry ---
             m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+            m3u += f'#KODIPROP:inputstream.adaptive.manifest_type=mpd\n'
             
             if has_clearkey:
                 license_key = f"{key_id}:{key_val}"
@@ -178,12 +178,12 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Zio URL with exact same ClearKey format & its own token)
+            # --- Secondary Backup Stream Entry (Zio) ---
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
-                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name} (Zio)\n'
+                m3u += f'#KODIPROP:inputstream.adaptive.manifest_type=mpd\n'
                 
-                # Zio ਉੱਤੇ ਵੀ ਉਹੀ ClearKey ਜਾਂ Proxy ਲੱਗੇਗੀ ਜੋ ਪ੍ਰਾਇਮਰੀ ਦੀ ਹੈ
                 if has_clearkey:
                     license_key = f"{key_id}:{key_val}"
                     m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
@@ -227,7 +227,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Exact ClearKey Match for Zio) is Running!"
+    return "JioTV M3U Server (Exact ClearKey & MPD Match for Zio) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
