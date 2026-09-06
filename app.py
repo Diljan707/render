@@ -65,7 +65,7 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te URL ਨਾਲ ਉਸਦਾ ਆਪਣਾ ਟੋਕਨ/ਕੁਕੀ ਕੱਢੋ
+        # 3. Secondary Zio.m3u fetch karo te URL ਨਾਲ ਉਸਦਾ ਆਪਣਾ ਟੋਕਨ ਕੱਢੋ
         secondary_streams = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
@@ -99,7 +99,7 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 5. Base Proxy URL
+        # 5. Base Proxy URL for Primary streams
         base_proxy_url = "https://streamflexsmm.in/license/"
         try:
             target_m3u_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
@@ -178,7 +178,7 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Using Zio's URL but with Primary's exact License Proxy & Token format)
+            # Secondary Backup Stream Entry (Using Primary's exact License Proxy & User-Agent format, but Zio's URL & its own token)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
@@ -193,15 +193,17 @@ def update_m3u_background():
                     m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
                     m3u += f'#KODIPROP:inputstream.adaptive.license_key={custom_license_proxy}\n'
                 
+                # Primary ਵਾਲਾ ਹੀ User-Agent
                 m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
                 
-                # Zio ਵਾਲੇ ਲਿੰਕ ਵਿੱਚੋਂ ਜੇ ਕੋਈ ਟੋਕਨ ਹੈ ਤਾਂ ਉਹ ਜਾਂ global_token ਵਰਤਿਆ ਜਾਵੇਗਾ
+                # Zio ਵਾਲੇ ਲਿੰਕ ਵਿੱਚੋਂ ਉਸਦਾ ਆਪਣਾ ਟੋਕਨ ਕੱਢਣਾ
                 sec_token = global_token
                 if "__hdnea__=" in sec_stream_url:
                     match_sec = re.search(r'__hdnea__=([^&]+)', sec_stream_url)
                     if match_sec:
                         sec_token = f"__hdnea__={match_sec.group(1)}"
                 
+                # Primary ਵਾਲਾ ਹੀ EXTHTTP Header format
                 if sec_token:
                     m3u += f'#EXTHTTP:{{"cookie":"{sec_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
                 else:
@@ -227,7 +229,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Unified Proxy & Separate Tokens) is Running!"
+    return "JioTV M3U Server (Exact Primary Format for Zio) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
