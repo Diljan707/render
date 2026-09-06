@@ -65,7 +65,15 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te poora block store karo
+        # Helper to get unique key for SD/HD separation
+        def get_channel_key(name):
+            name_lower = name.lower()
+            if " hd" in name_lower or name_lower.endswith("hd"):
+                return name_lower.replace("hd", "").strip() + "_hd"
+            else:
+                return name_lower.strip() + "_sd"
+
+        # 3. Secondary Zio.m3u fetch karo te SD/HD ਮੁਤਾਬਕ ਸਟੋਰ ਕਰੋ
         secondary_channels = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
@@ -87,7 +95,8 @@ def update_m3u_background():
                                 raw_sec_name = current_extinf.split(",")[-1].strip()
                                 processed_name = clean_and_filter_name(raw_sec_name)
                                 if processed_name:
-                                    secondary_channels[processed_name.lower()] = {
+                                    ckey = get_channel_key(processed_name)
+                                    secondary_channels[ckey] = {
                                         "props": current_props,
                                         "url": line
                                     }
@@ -158,6 +167,7 @@ def update_m3u_background():
                 fallback_counter += 1
                 
             formatted_name = clean_name
+            ch_key = get_channel_key(formatted_name)
                 
             key_id = ch.get('keyId', '')
             key_val = ch.get('key', '')
@@ -186,12 +196,11 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # --- Secondary Backup Stream Entry (Zio properties kept, but Name, Logo & Group matched with Primary) ---
-            sec_data = secondary_channels.get(clean_name.lower())
+            # --- Secondary Backup Stream Entry (SD and HD separated correctly) ---
+            sec_data = secondary_channels.get(ch_key)
             if sec_data:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
                 
-                # Zio دیاں ਆਪਣੀਆਂ original properties (license/proxy/cookies)
                 for prop in sec_data["props"]:
                     m3u += f'{prop}\n'
                 
@@ -215,7 +224,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Unified Names & Logos with Native Zio Streams) is Running!"
+    return "JioTV M3U Server (SD and HD Separated Successfully) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -223,4 +232,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-                        
+        
