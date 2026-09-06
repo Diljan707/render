@@ -65,7 +65,7 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te poora block (EXTINF, KODIPROP, URL) store karo
+        # 3. Secondary Zio.m3u fetch karo te poora block store karo
         secondary_channels = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
@@ -132,7 +132,6 @@ def update_m3u_background():
         channels = channels_res.json()
         
         m3u = '#EXTM3U\n'
-        
         fallback_counter = 1
         
         for ch in channels:
@@ -167,7 +166,7 @@ def update_m3u_background():
             ch_token = star_tokens.get(ch_id) or global_token
             final_url = f"{url}?{ch_token}" if ch_token and '?' not in url else f"{url}&{ch_token}" if ch_token else url
             
-            # Primary Stream Entry
+            # --- Primary Stream Entry ---
             m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
             
             if has_clearkey:
@@ -187,12 +186,12 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Using Zio's own native properties & license proxy to prevent DRM error)
+            # --- Secondary Backup Stream Entry (Zio properties kept, but Name, Logo & Group matched with Primary) ---
             sec_data = secondary_channels.get(clean_name.lower())
             if sec_data:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
                 
-                # Zio دیاں ਆਪਣੀਆਂ original properties (license keys/proxies) ਲੱਗਣਗੀਆਂ
+                # Zio دیاں ਆਪਣੀਆਂ original properties (license/proxy/cookies)
                 for prop in sec_data["props"]:
                     m3u += f'{prop}\n'
                 
@@ -216,7 +215,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Native Zio Properties Fixed) is Running!"
+    return "JioTV M3U Server (Unified Names & Logos with Native Zio Streams) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -224,4 +223,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-                            
+                        
