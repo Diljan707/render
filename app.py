@@ -65,15 +65,20 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # Helper to get unique key for SD/HD separation
+        # Advanced SD/HD Separation Key Generator
         def get_channel_key(name):
             name_lower = name.lower()
-            if " hd" in name_lower or name_lower.endswith("hd"):
-                return name_lower.replace("hd", "").strip() + "_hd"
+            # Remove special characters and extra spaces for clean matching
+            clean = re.sub(r'[^a-z0-9\s]', '', name_lower)
+            if 'hd' in clean.split() or 'fhd' in clean.split():
+                # Remove 'hd'/'fhd' and mark as _hd
+                base = re.sub(r'\b(hd|fhd|hevc)\b', '', clean).strip()
+                return base + "_hd"
             else:
-                return name_lower.strip() + "_sd"
+                base = re.sub(r'\b(sd)\b', '', clean).strip()
+                return base + "_sd"
 
-        # 3. Secondary Zio.m3u fetch karo te SD/HD ਮੁਤਾਬਕ ਸਟੋਰ ਕਰੋ
+        # 3. Secondary Zio.m3u fetch karo te SD/HD ਅਨੁਸਾਰ ਸਟੋਰ ਕਰੋ
         secondary_channels = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
@@ -196,7 +201,7 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # --- Secondary Backup Stream Entry (SD and HD separated correctly) ---
+            # --- Secondary Backup Stream Entry (Strict SD/HD Separation) ---
             sec_data = secondary_channels.get(ch_key)
             if sec_data:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
@@ -224,7 +229,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (SD and HD Separated Successfully) is Running!"
+    return "JioTV M3U Server (Strict SD and HD Separation Fixed) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
