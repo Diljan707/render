@@ -65,7 +65,7 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te URL ਨਾਲ ਉਸਦਾ ਆਪਣਾ ਪੂਰਾ ਸਹੀਖੋਰਾ ਡਾਟਾ ਰੱਖੋ
+        # 3. Secondary Zio.m3u fetch karo te URL store karo
         secondary_streams = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
@@ -99,7 +99,7 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 5. Base Proxy URL for Primary streams
+        # 5. Base Proxy URL (fallback ਲਈ ਜੇ ਕਲੀਅਰਕੀ ਨਾ ਹੋਵੇ)
         base_proxy_url = "https://streamflexsmm.in/license/"
         try:
             target_m3u_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
@@ -178,11 +178,12 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Zio's original clean link with Primary's License format)
+            # Secondary Backup Stream Entry (Zio URL with exact same ClearKey format & its own token)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
                 
+                # Zio ਉੱਤੇ ਵੀ ਉਹੀ ClearKey ਜਾਂ Proxy ਲੱਗੇਗੀ ਜੋ ਪ੍ਰਾਇਮਰੀ ਦੀ ਹੈ
                 if has_clearkey:
                     license_key = f"{key_id}:{key_val}"
                     m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
@@ -193,9 +194,19 @@ def update_m3u_background():
                     m3u += f'#KODIPROP:inputstream.adaptive.license_key={custom_license_proxy}\n'
                 
                 m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
-                m3u += f'#EXTHTTP:{{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
                 
-                # Zio ਵਾਲਾ ਅਸਲੀ ਸਾਫ਼ ਲਿੰਕ ਬਿਨਾਂ ਵਾਧੂ ਛੇੜਛਾੜ ਦੇ
+                # Zio ਦੇ ਲਿੰਕ ਵਿੱਚੋਂ ਉਸਦਾ ਆਪਣਾ ਟੋਕਨ ਕੱਢ ਕੇ ਕੁਕੀ ਵਿੱਚ ਦੇਣਾ
+                sec_token = global_token
+                if "__hdnea__=" in sec_stream_url:
+                    match_sec = re.search(r'__hdnea__=([^&]+)', sec_stream_url)
+                    if match_sec:
+                        sec_token = f"__hdnea__={match_sec.group(1)}"
+                
+                if sec_token:
+                    m3u += f'#EXTHTTP:{{"cookie":"{sec_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
+                else:
+                    m3u += f'#EXTHTTP:{{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
+                    
                 m3u += f'{sec_stream_url}\n'
 
             m3u += '\n'
@@ -216,7 +227,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Clean Zio Format Fix) is Running!"
+    return "JioTV M3U Server (Exact ClearKey Match for Zio) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
