@@ -1,4 +1,4 @@
-from flask import Flask, Response
+from flask import Flask, Response, send_file
 import requests
 import re
 import threading
@@ -216,6 +216,10 @@ def update_m3u_background():
 
             m3u += '\n'
 
+        # Save to a physical file on disk as well
+        with open("playlist.m3u", "w", encoding="utf-8") as f:
+            f.write(m3u)
+
         cached_m3u = m3u
     except Exception as e:
         print(f"Background update error: {e}")
@@ -232,12 +236,16 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (480p & 1080p Tags Added) is Running!"
+    return "JioTV M3U Server (File Saving & 480p/1080p Tags) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
     return Response(cached_m3u, mimetype='audio/x-mpegurl')
 
+@app.route('/download')
+def download_playlist():
+    return send_file("playlist.m3u", as_attachment=True)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-                                      
+                            
