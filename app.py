@@ -118,7 +118,7 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 6. Channels JSON fetch te M3U generation (Without EPG)
+        # 6. Channels JSON fetch te M3U generation
         channels_res = requests.get("https://jjtvxweb.pages.dev/jstr4web.json", timeout=6)
         channels = channels_res.json()
         
@@ -178,7 +178,7 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry
+            # Secondary Backup Stream Entry (Added EXTHTTP Headers & Cookies to fix DRM/Decryption Error)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
@@ -193,6 +193,12 @@ def update_m3u_background():
                     m3u += f'#KODIPROP:inputstream.adaptive.license_key={custom_license_proxy}\n'
                 
                 m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
+                
+                if ch_token:
+                    m3u += f'#EXTHTTP:{{"cookie":"{ch_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
+                else:
+                    m3u += f'#EXTHTTP:{{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
+                    
                 m3u += f'{sec_stream_url}\n'
 
             m3u += '\n'
@@ -213,7 +219,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (EPG Removed) is Running!"
+    return "JioTV M3U Server (Secondary DRM Fixed) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -221,4 +227,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-                                      
+        
