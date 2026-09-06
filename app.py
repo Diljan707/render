@@ -11,139 +11,808 @@ cached_epg = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n</tv>'
 is_updating = False
 
 
-# ==========================================
-# COMMON NAME FILTER & CLEANING
-# ==========================================
+# =========================================================
+# CUSTOM DISHTV LCN LIST
+# =========================================================
 
-regional_langs = [
-    'tamil',
-    'telugu',
-    'malayalam',
-    'marathi',
-    'bangla',
-    'kannada',
-    'gujarati',
-    'odia'
-]
+LCN_TEXT = """
+100: Star Plus HD
+101: Star Plus
+102: Zee TV HD
+103: Zee tv
+104: SONY ENTERTAINMENT TELEVISION HD
+105: SONY ENTERTAINMENT TELEVISION
+106: SONY SAB HD
+107: SONY SAB
+108: &TV HD
+109: Dangal TV
+110: Zee TV HD
+111: Zee tv
+112: Star Plus HD
+113: Star Plus
+114: SONY ENTERTAINMENT TELEVISION HD
+115: Star Bharat HD
+116: Star Bharat
+119: Investigation Discovery
+120: Colors HD
+121: Colors
+124: SONY SAB HD
+125: SONY SAB
+126: Investigation Discovery
+127: EPIC Parivaar
+128: Sun Neo
+135: Anmol TV
+136: Sun Neo
+137: Colors Rishtey
+138: SONY PAL
+139: Shemaroo TV
+140: Star Utsav
+141: Dangal 2
+143: Colors Rishtey
+147: Zoom
+149: Shemaroo TV
+151: EPIC Parivaar
+167: Star Utsav
+169: Dangal 2
+171: SONY PAL
+173: Zoom
+178: DD National HD
+179: DD RAJASTHAN
+181: DD UP
+183: DD MP
+192: DD National HD
+203: Salaam TV
+213: DD URDU
+215: DD KASHIR
+229: DD UP
+237: DD MP
+245: DD RAJASTHAN
+304: &pictures HD
+305: &Pictures
+307: Zee Bollywood
+308: Watcho
+310: SONY MAX HD
+311: SONY MAX
+312: Colors Cineplex HD
+313: Colors Cineplex
+314: Zee Cinema HD
+315: Zee Cinema
+316: Star Gold HD
+317: Star Gold
+318: Colors Cineplex
+321: Star Gold Romance
+329: Star Gold Thrills
+335: Zee Classic
+336: Zee Classic
+338: Star Gold
+339: Zee Cinema HD
+340: Zee Cinema
+341: Watcho
+342: SONY MAX HD
+343: SONY MAX
+349: SONY MAX 2
+351: Star Gold 2
+353: Colors Cineplex Superhits
+354: Anmol Cinema 2
+355: Anmol Cinema
+357: Star Gold Romance
+358: Star Gold Thrills
+359: Goldmines
+360: Star Gold Select HD
+361: Star Gold Select
+363: Star Utsav Movies
+365: Shemaroo Josh
+369: Anmol Cinema
+371: Anmol Cinema 2
+373: SONY MAX 2
+375: Sony Wah
+380: Sony Max 1
+381: Star Gold Select HD
+382: Star Gold Select
+411: B4U Kadak
+414: Shemaroo Josh
+416: Sony Max 1
+420: Big Magic
+451: Zing
+454: MTV HD
+455: MTV
+457: MTV
+459: B4U Music
+461: 9X M
+463: EPIC Music
+464: 9X M
+465: Zing
+467: EPIC Music
+504: Colors Infinity HD
+505: Colors Infinity
+515: Disney International HD
+542: MNX HD
+543: MNX
+544: SONY PIX HD
+545: SONY PIX
+546: Movies Now HD
+547: Movies Now
+548: Star Movies HD
+549: Star Movies
+556: Star Movies HD
+557: Star Movies
+560: SONY PIX HD
+561: SONY PIX
+563: Romedy Now
+565: MNX
+566: Romedy Now
+567: Movies Now
+571: MN+ HD
+573: Star Movies Select HD
+574: STAR MOVIES SELECT
+576: MN+ HD
+577: Star Movies Select HD
+578: STAR MOVIES SELECT
+602: Star Sports 1 HD
+603: Star Sports 1
+604: Star Sports 2 HD
+605: Star Sports 2
+606: Star Sports 1 HD Hindi
+607: Star Sports 1 Hindi
+610: SONY SPORTS TEN 1 HD
+611: SONY SPORTS TEN 1
+612: SONY SPORTS TEN 2 HD
+613: SONY SPORTS TEN 2
+614: Sony Sports Ten 3 Hindi HD
+615: Sony Sports Ten 3 Hindi
+620: Star Sports 1 HD Hindi
+621: Star Sports 1 Hindi
+622: SONY SPORTS TEN 5 HD
+623: SONY SPORTS TEN 5
+624: Star Sports 2 Hindi HD
+625: Star Sports 2 Hindi
+628: DD Sports HD
+629: EuroSports HD
+630: Eurosport
+631: Unite8 Sports 1 HD
+632: Unite8 Sports 1
+633: Unite8 Sports 2 HD
+634: Unite8 Sports 2
+637: DD Sports HD
+638: DD SPORTS
+640: Star Sports khel
+641: Star Sports 2 Telugu
+642: Star Sports 2 Tamil
+645: Star Sports Select HD1
+646: Star Sports Select 1
+647: Star Sports Select HD2
+648: Star Sports Select 2
+649: Star Sports 3
+650: Star Sports 2 HD
+651: Zee News
+652: eurosport HD
+653: India tv
+654: Zee Bharat
+655: SONY SPORTS TEN 1
+656: SONY SPORTS TEN 2 HD
+657: SONY SPORTS TEN 2
+658: TV9 Bharatvash
+659: SONY SPORTS TEN 5
+660: Star Sports Select HD1
+661: Star Sports Select 1
+662: India Daily 24x7
+663: News18 India
+665: Star Sports 3
+666: Times Now Navbharat
+667: Star Sports Select 2
+669: Star Sports khel
+670: Zee Delhi NCR Haryana
+671: Unite8 Sports 1
+672: Unite8 Sports 2 HD
+673: Unite8 Sports 2
+679: Sudarshan TV
+690: Nation27
+694: Sansad TV 1 HD
+696: Sansad TV 2 HD
+697: Sansad TV 2
+698: DD News HD
+699: DD NEWS
+700: DD Uttarakhand
+703: News18 Delhi NCR/J&K
+704: JK 24x7 News
+705: Gulistan News
+707: Zee UP Uttrakhand
+709: News State UP/UK
+711: News18 Uttar Pradesh/Uttarakhand
+713: News India 24x7
+715: Zee MP Chattisgarh
+717: News18 Madhya Pradesh/Chhattisgarh
+720: IBC 24
+721: Zee Bharat
+723: Zee News
+725: Aaj Tak
+727: Zee Rajasthan News
+728: News18 Rajasthan
+729: NDTV Rajasthan
+730: TV100
+731: Zee Business
+733: TV9 Bharatvash
+735: India News
+739: ABP news
+741: Republic Bharat
+743: News 24
+745: India Daily 24x7
+747: India tv
+749: Times Now Navbharat
+751: Sudarshan TV
+752: Zee Delhi NCR Haryana
+753: Bharat Express
+754: DD India HD
+755: Sansad TV 1 HD
+757: Sansad TV 2 HD
+758: Sansad TV 2
+759: DD INDIA
+760: DD NEWS
+761: NDTV
+762: DD News HD
+763: India Today
+765: WION
+766: Times Now World HD
+767: Times Now
+769: CNN News 18
+773: Mirror Now
+775: News X
+777: Salaam TV
+778: DD India HD
+779: DD URDU
+781: News18 Delhi NCR/J&K
+783: DD KASHIR
+785: CGTN
+787: Al jazeera
+790: France 24
+792: Russia Today
+802: Discovery HD World
+803: Discovery
+805: Animal Planet HD World
+806: Animal Planet
+808: National Geographic HD
+809: National Geographic Channel
+812: Discovery Science
+814: Discovery Turbo
+817: News18 Uttar Pradesh/Uttarakhand
+819: Zee UP Uttrakhand
+820: History TV 18
+822: Nat Geo Wild HD
+823: Zee Bihar Jharkhand
+825: News18 Bihar/Jharkhand
+828: SONY BBC EARTH HD
+829: Sony BBC Earth
+830: EPIC TV
+841: News18 Rajasthan
+843: Zee Rajasthan News
+855: Zee MP Chattisgarh
+857: News18 Madhya Pradesh/Chhattisgarh
+871: CNBC AWAAZ
+873: Zee Business
+891: NDTV
+893: WION
+895: Times Now
+897: CNN News 18
+899: Mirror Now
+901: India Today
+903: Zee Zest
+911: CNN INTL
+913: BBC World News
+915: Russia Today
+918: TLC HD World
+919: TLC
+920: Travel XP HD
+921: Travelxp
+931: CNBC TV18
+933: ET Now
+934: CNBC Prime HD
+953: Zee Zest
+955: Pogo
+956: History TV18 HD
+957: History TV 18
+958: Sonic
+959: Epic
+960: Discovery Kids
+961: Discovery
+962: National Geographic HD
+963: National Geographic Channel
+964: Animal Planet HD
+965: Animal Planet
+967: Discovery Science
+968: Nat Geo Wild HD
+969: National Geographic Wild
+972: TLC HD World
+973: TLC
+974: Nick HD+
+975: Travelxp
+976: Disney Channel HD
+977: Disney Channel
+979: Super Hungama
+980: EPIC Kids
+981: Hungama tv
+983: Discovery Turbo
+984: SONY BBC EARTH HD
+985: Sony BBC Earth
+987: Nick Jr.
+989: Sony YAY
+990: ETV Bal Bharat
+1051: Divya TV
+1059: Sadhna TV
+1061: Hare Krsna
+1064: Vedic
+1065: Satsang
+1066: Aastha Bhajan
+1067: Sanskar
+1077: Aastha
+1079: Shubh TV
+1081: Sant Wani
+1083: Shraddha MH One
+1087: Peace of Mind
+1092: Shree Disha Bhakti
+1094: Sai Leela
+1101: Hungama tv
+1102: Nick HD+
+1103: Nickelodeon
+1105: Jinvani
+1107: Sonic
+1109: Sony YAY
+1110: Paras Gold One
+1111: ETV Bal Bharat
+1113: Cartoon Network
+1115: Disney Channel
+1117: Pogo
+1119: Super Hungama
+1121: Nick Jr.
+1123: Disney Jr.
+1125: Discovery Kids
+1127: EPIC Kids
+1152: Chardikla Time TV
+1154: PTC Punjabi
+1156: ZEE PUNJABI
+1181: Pitaara TV
+1182: Tabbar Hits
+1183: PTC Chakde
+1184: PTC Punjabi Gold
+1185: 9X Tashan
+1186: PTC MUSIC
+1187: MH1
+1188: Balle Balle
+1190: Zee Punjab Haryana Himachal
+1191: PTC News
+1193: News18 Punjab Haryana Himachal
+1194: India News Haryana
+1195: PTC SIMRAN
+1196: News State Punjab Haryana Himachal
+1197: Khabrain Abhi Tak
+1200: Pratham News
+1201: Zee Marathi HD
+1202: Zee Marathi
+1204: Zee Yuva
+1205: Star Pravah HD
+1206: Star Pravah
+1207: Aastha Bhajan
+1208: Colors Marathi HD
+1209: Satsang
+1211: Sony Marathi
+1212: Shemaroo Marathibana
+1213: Sadhna TV
+1214: Sun Marathi
+1216: Sai Leela
+1217: Aadinath
+1218: Paras Gold One
+1219: Jinvani
+1220: Shraddha MH One
+1221: Peace of Mind
+1230: Zee Talkies HD
+1231: Zee Talkies
+1232: Pravah Picture HD
+1233: Pravah Picture
+1243: 9X Jhakaas
+1251: Zee 24 Taas
+1253: ABP Majha
+1254: NAMMA Homeopathy
+1255: News18 Marathi
+1257: NDTV Marathi
+1259: TV9 MARATHI
+1261: SAAM TV
+1263: Lokshahi
+1265: Pudhari News
+1272: Colors Gujarati
+1273: Colors Gujarati Cinema
+1289: News18 Gujarati
+1291: Zee 24 Kalak
+1293: ABP Asmita
+1296: Sandesh News
+1297: CNBC Bajar
+1298: VTV Gujarati
+1299: TV9 Gujarati
+1302: Zee Sarthak
+1307: Tarang
+1309: Star Kiran
+1311: Sidharth TV
+1325: DD Oriya
+1331: Alankar
+1333: Sidharth Gold
+1341: Tarang Music
+1351: OTV
+1355: ZEE PUNJABI
+1357: PTC Punjabi
+1359: Kanak News
+1361: PTC Punjabi Gold
+1363: Prameya News7
+1365: MBC TV
+1369: ARGUS
+1377: Pitaara TV
+1389: PTC Chakde
+1391: 9X Tashan
+1393: PTC MUSIC
+1395: Sidharth Utsav
+1397: Jay Jagannath TV
+1403: Star Jalsha HD
+1404: Star Jalsha
+1407: Sony Aath
+1408: Zee Bangla HD
+1409: Zee Punjab Haryana Himachal
+1410: Colors Bangla HD
+1411: News18 Punjab Haryana Himachal
+1413: PTC News
+1414: India Daily Live
+1415: Sun Bangla
+1419: Enterr10 Bangla
+1427: RUPASI BANGLA
+1428: CTVN-AKD-PLUS
+1429: DD BANGLA
+1430: Jalsha Movies HD
+1431: PTC SIMRAN
+1433: Zee Bangla Sonar
+1439: Colors Bangla Cinema
+1454: Zee Marathi HD
+1455: Zee Marathi
+1456: Colors Marathi HD
+1457: Colors Marathi
+1458: Star Pravah HD
+1459: Star Pravah
+1461: Zee Yuva
+1463: Fakt Marathi
+1465: Sony Marathi
+1467: Sun Marathi
+1471: Kolkata TV
+1473: News Time
+1475: 24 Ghanta TV
+1477: ABP Ananda
+1479: News18 Bangla
+1480: Zee Talkies HD
+1481: Zee Talkies
+1483: TV9 Bangla
+1485: Pravah Picture
+1489: Calcutta News
+1491: News Live Bangla
+1495: 9X Jhakaas
+1507: Rengoni TV
+1509: Rang
+1511: Jonack TV
+1513: ABP Majha
+1514: DD ArunPrabha
+1515: Zee 24 Taas
+1517: TV9 Maharashtra
+1519: SAAM TV
+1520: DD ASSAM
+1521: Lokshahi
+1523: News18 Marathi
+1525: Prag News
+1527: Assam Talk
+1529: DY 365
+1531: Pratidin Time
+1533: News18 Assam North East
+1535: News Live
+1537: Nepal One
+1540: NB News
+1554: Bhojpuri Cinema
+1555: ZEE BIOSKOPE
+1556: EPIC bhojpuri
+1560: B4U Bhojpuri
+1565: DD BIHAR
+1573: Sangeet Bhojpuri
+1575: Zee Bihar Jharkhand
+1579: News18 Bihar/Jharkhand
+1607: Colors Gujarati
+1621: Colors Gujarati Cinema
+1627: DD Yadagiri
+1629: DD SAPTAGIRI
+1639: News18 Gujarati
+1641: CNBC Bajar
+1643: TV9 Gujarati
+1645: Sandesh News
+1647: ABP Asmita
+1649: Zee 24 Kalak
+1651: VTV Gujarati
+1707: Tarang
+1711: Zee Sarthak
+1713: Star Kiran
+1715: Sidharth TV
+1717: DD Oriya
+1727: Alankar
+1739: Tarang Music
+1751: OTV
+1755: Kalinga TV
+1757: ARGUS
+1759: Prameya News7
+1761: MBC TV
+1763: Kanak News
+1765: News18 Oriya
+1789: Prarthana Life
+1806: Zee Bangla HD
+1807: Zee Bangla
+1808: Colors Bangla HD
+1809: Colors Bangla
+1810: Star Jalsha HD
+1811: Star Jalsha
+1813: Aakash aath
+1815: Rupashi Bangla
+1817: Sony Aath
+1819: Sun Bangla
+1821: ENTER 10 BANGLA
+1827: DD BANGLA
+1829: CTVN-AKD-PLUS
+1834: Jalsha Movies HD
+1835: Jalsha Movies
+1837: Zee Bangla Cinema
+1839: Colors Bangla Cinema
+1849: Dhoom Music
+1851: Sangeet Bangla
+1867: ABP Ananda
+1869: 24 Ghanta TV
+1871: Kolkata TV
+1873: R. Bangla
+1875: News Time
+1877: News18 Bangla
+1883: Calcutta News
+1957: Rang
+1959: Rengoni TV
+1961: Nepal One
+1965: DD ASSAM
+1967: DD ArunPrabha
+1979: Ramdhenu
+1991: News Live
+1992: News18 Assam North East
+1993: DY 365
+1997: Pratidin Time
+2061: DD BIHAR
+2073: ZEE BIOSKOPE
+2075: Bhojpuri Cinema
+2079: EPIC bhojpuri
+2356: Sun Gemini HD
+2357: Sun Gemini
+2358: STAR MAA HD
+2359: STAR Maa
+2360: ETV HD
+2361: ETV Telugu
+2362: Zee Telugu HD
+2363: Zee Telugu
+2367: ETV Plus
+2369: Vissa
+2371: Sun Gemini Life
+2375: DD Yadagiri
+2377: DD SAPTAGIRI
+2379: Sun Gemini Comedy
+2383: ETV Life
+2395: Maa Gold
+2397: Sun Gemini Movies
+2399: ETV Cinema
+2402: Maa Movies HD
+2403: Maa Movies
+2404: Zee Cinemalu HD
+2405: Zee Cinemalu
+2414: Sony Wah
+2417: Sun Gemini Music
+2419: Maa Music
+2421: Raj Musix Telugu
+2423: ETV Music
+2432: Star Sports 1 Telugu HD
+2433: Star Sports 1 Telugu
+2434: Star Sports 2 Telugu HD
+2435: Star Sports 2 Telugu
+2439: Sony Sports Ten 4 Telugu
+2443: TV5 Telugu News
+2445: ETV Andhra Pradesh
+2447: ABN Andhra Jyothi
+2449: Sakshi TV
+2451: ETV Telangana
+2453: TV9 Telugu news
+2455: NTV News
+2457: V6 News
+2459: T News
+2461: HM TV
+2463: 10TV Telugu News
+2465: Raj News Telugu
+2467: Zee Telugu News
+2487: Khushi TV
+2499: Aradana
+2503: SVBC
+2505: Bhakti TV
+2507: Hindu Dharmam
+2606: Sun Udaya HD
+2607: Sun Udaya
+2608: Zee Kannada HD
+2609: Zee Kannada
+2610: Star Suvarna HD
+2611: Star Suvarna
+2616: Colors Kannada HD
+2617: Colors Kannada
+2619: Colors Super
+2621: Siri Kannada-All Time
+2623: DD CHANDANA
+2627: Sun Udaya Comedy
+2639: Star Suvarna Plus
+2641: Zee Power
+2643: Sun Udaya Movies
+2645: Colors Kannada Cinema
+2647: Public Movies
+2659: Sun Udaya Music
+2661: Raj Musix Kannada
+2663: Public Music
+2675: Star Sports 1 Kannada
+2677: Star Sports 2 Kannada
+2679: Sony Sports Ten4 Kannada
+2683: Suvarna News 24x7
+2685: News18 Kannada
+2687: Public TV
+2688: News 1st
+2689: TV9 Kannada
+2691: Raj News Kannada
+2693: R. Kannada
+2696: Power TV
+2699: TV5 Kannada
+2713: Ayush TV
+2721: Chintu TV
+2857: Puthu Yugam
+2858: Sun TV HD
+2859: Sun TV
+2860: Vijay HD
+2861: Star vijay
+2862: Zee Tamil HD
+2863: Zee Tamil
+2865: Sun Life
+2867: Jaya TV
+2868: Vijay Super HD
+2869: Vijay Super
+2873: Polimer TV
+2875: Sirippoli
+2877: Vasanth TV
+2878: Colors Tamil HD
+2879: Colors Tamil
+2881: RAJ TV
+2883: Murasu TV
+2885: Kalaignar Chithiram
+2891: Mega 24
+2895: KALAIGNAR TV
+2897: Adithya TV
+2899: Mega TV
+2911: Zee Thirai
+2912: KTV HD
+2913: KTV
+2915: J Movies
+2917: Raj Digital Plus
+2930: SUN Music HD
+2931: Sun Music
+2933: KALAIGNAR ISAIARUVI
+2935: Jaya Max
+2937: Raj Musix Tamil
+2939: mega MUSIQ
+2941: Vijay Takkar
+2950: Star Sports 1 Tamil HD
+2951: Star Sports Tamil 1
+2953: Sony Sports Ten 4 Tamil
+2954: Star Sports 2 Tamil HD
+2955: Star Sports 2 Tamil
+2961: Raj News Tamil
+2963: Sun News
+2965: Puthiya Thalaimurai
+2967: Polimer News
+2968: News 18 Tamil Nadu
+2969: Jaya Plus
+2970: Malai Murasu Seithikal
+2971: Seithigal
+2973: Makkal TV
+2975: Sathiyam TV
+2979: Velicham TV
+2981: News Tamil 24x7
+2991: D Tamil
+2993: Kalvi Tholaikkatchi
+3001: Chutti Tv
+3013: Nambikkkai
+3015: Sai TV
+3017: Madha TV
+3019: SVBC 2
+3025: Jothi TV
+3106: Sun Surya HD
+3107: Sun Surya
+3108: Asianet HD
+3109: Asianet
+3110: Zee Keralam HD
+3111: Zee Keralam
+3112: Mazhavil Manorama HD
+3113: Mazhavil Manorama
+3117: Kairali
+3119: Asianet Plus
+3121: Amrita TV
+3123: We TV
+3125: DD MALAYALAM
+3127: Kaumudy
+3133: Flowers TV
+3139: Sun Surya Comedy
+3151: Sun Surya Movies
+3152: Asianet Movies HD
+3153: Asianet Movies
+3165: Sun Surya Music
+3167: Raj Musix Malayalam
+3179: Asianet News
+3181: Manorama News
+3183: Mathrubhumi News
+3185: News 18 Kerala
+3187: Raj News Malayalam
+3188: REPORTER TV
+3189: Kairali News
+3190: News Malayalam 24X7
+3191: Twenty-Four
+3193: Janam TV
+3195: Media One
+3197: JAIHIND TV
+3205: Safari TV
+3215: Kochu TV
+3229: Darshana TV
+3231: Shalom
+3233: Goodness TV
+3235: Powervision
+3237: Harvest TV
+3999: Teleshopping 1
+4002: Skyama Daily Post News
+4004: NORTH EAST LIVE
+4005: Star Utsav Movies
+4006: India Daily Live
+4017: K News India
+4021: India News
+4022: Goldmines
+4029: Manoranjan Movies
+4043: Republic TV
+4064: R. Bangla
+4065: Living India News
+4066: Bharat Express
+"""
 
 
-def clean_and_filter_name(name):
-    if not name:
-        return None
-
-    name = name.strip()
-    low = name.lower()
-
-    # ਰੀਜਨਲ ਭਾਸ਼ਾਵਾਂ ਵਾਲੇ ਚੈਨਲ ਫਿਲਟਰ ਕਰਨਾ
-    if any(re.search(rf'\b{re.escape(x)}\b', low) for x in regional_langs):
-        return None
-
-    # ਨਾਮ ਵਿੱਚੋਂ 'Hindi' ਹਟਾਉਣਾ
-    name = re.sub(r'\s+Hindi\b', '', name, flags=re.IGNORECASE)
-
-    # ਨਾਮ ਵਿੱਚੋਂ 'SD' ਹਟਾਉਣਾ
-    name = re.sub(r'\bSD\b', '', name, flags=re.IGNORECASE)
-
-    return re.sub(r'\s+', ' ', name).strip()
-
+# =========================================================
+# SAME DISHTV-STYLE LCN MAP
+# =========================================================
 
 def normalize_name(name):
-    cleaned = clean_and_filter_name(name)
-    if not cleaned:
-        return None
-    name = cleaned.lower()
-    name = re.sub(r'[^a-z0-9]+', '', name)
-    return name.strip()
+    name = str(name or "").lower().strip()
+    name = re.sub(r'\s+', ' ', name)
+    return name
 
 
-# ==========================================
-# SECONDARY Zio.m3u STREAM EXTRACTOR (WITH FILTERS)
-# ==========================================
+dishtv_lcn_map = {}
 
-def get_secondary_streams():
-    streams = {}
-    try:
-        url = (
-            "https://raw.githubusercontent.com/"
-            "Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
-        )
-        r = requests.get(url, timeout=5)
-        if r.status_code != 200:
-            print("Failed to fetch Zio.m3u, status:", r.status_code)
-            return streams
+for line in LCN_TEXT.splitlines():
+    line = line.strip()
 
-        lines = r.text.splitlines()
-        raw_name = ""
+    if not line or ":" not in line:
+        continue
 
-        for line in lines:
-            line = line.strip()
-            if line.startswith("#EXTINF:"):
-                if "," in line:
-                    raw_name = line.split(",", 1)[1].strip()
-                else:
-                    raw_name = ""
-            elif line and not line.startswith("#"):
-                if raw_name:
-                    # ਪ੍ਰਾਇਮਰੀ ਵਾਲੇ ਫਿਲਟਰ ਹੀ ਸੈਕੰਡਰੀ ਉੱਤੇ ਲਾਗੂ ਕੀਤੇ ਹਨ
-                    clean_raw = clean_and_filter_name(raw_name)
-                    if clean_raw:
-                        key = normalize_name(raw_name)
-                        if key:
-                            streams[key] = line
-                            streams[clean_raw.lower()] = line
-                    raw_name = ""
-        
-        print(f"Successfully loaded {len(streams)} filtered secondary streams from Zio.m3u")
-    except Exception as e:
-        print("Secondary error:", e)
+    lcn, name = line.split(":", 1)
 
-    return streams
+    lcn = lcn.strip()
+    name = normalize_name(name)
+
+    if lcn and name:
+        # Same dictionary behaviour as old logic:
+        # duplicate name hove taan LAST LCN use hovega
+        dishtv_lcn_map[name] = lcn
 
 
-# ==========================================
-# DISHTV LCN FETCHER FROM GITHUB
-# ==========================================
-
-def get_dishtv_lcn_map():
-    lcn_map = {}
-    try:
-        url = "https://raw.githubusercontent.com/Diljan707/Automated-/main/dishtv_lcn_list.txt"
-        r = requests.get(url, timeout=5)
-        print(f"DishTV LCN fetch status: {r.status_code}")
-        if r.status_code == 200:
-            lines = r.text.splitlines()
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = re.split(r'\||,|\t', line)
-                if len(parts) >= 2:
-                    p1 = parts[0].strip()
-                    p2 = parts[1].strip()
-                    
-                    if p2.isdigit():
-                        ch_name = p1
-                        lcn_num = p2
-                    elif p1.isdigit():
-                        ch_name = p2
-                        lcn_num = p1
-                    else:
-                        continue
-                    
-                    norm_k = normalize_name(ch_name)
-                    if norm_k:
-                        lcn_map[norm_k] = lcn_num
-                    lcn_map[ch_name.lower()] = lcn_num
-                    
-            print(f"Successfully loaded {len(lcn_map)} LCN mappings from GitHub.")
-    except Exception as e:
-        print("DishTV LCN fetch error:", e)
-    return lcn_map
-
-
-# ==========================================
+# =========================================================
 # BACKGROUND UPDATE
-# ==========================================
+# =========================================================
 
 def update_m3u_background():
     global cached_m3u, cached_epg, is_updating
@@ -154,216 +823,171 @@ def update_m3u_background():
     is_updating = True
 
     try:
-        # 1. Star Sports tokens
+
+        # -------------------------------------------------
+        # 1. STAR SPORTS DYNAMIC COOKIES
+        # -------------------------------------------------
+
+        COOKIE_STAR_SPORTS = (
+            "https://allinonereborn2.online/"
+            "jtv-fetch/jstarcookie/cookie.json"
+        )
+
         star_tokens = {}
+
         try:
-            url = "https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json"
-            r = requests.get(url, timeout=6)
-            if r.status_code == 200:
-                data = r.json()
-                for item in data.get("failed_results", []):
-                    ch_id = str(item.get("channel_id", ""))
-                    final_url = item.get("error_details", {}).get("final_url", "")
-                    m = re.search(r'__hdnea__=([^&]+)', final_url)
-                    if m:
-                        star_tokens[ch_id] = f"__hdnea__={m.group(1)}"
+            res = requests.get(
+                COOKIE_STAR_SPORTS,
+                timeout=6
+            )
+
+            if res.status_code == 200:
+
+                data = res.json()
+
+                if data and "failed_results" in data:
+
+                    for item in data["failed_results"]:
+
+                        ch_id_str = str(
+                            item.get("channel_id")
+                        )
+
+                        err_details = item.get(
+                            "error_details",
+                            {}
+                        )
+
+                        final_url = err_details.get(
+                            "final_url",
+                            ""
+                        )
+
+                        if "__hdnea__=" in final_url:
+
+                            match = re.search(
+                                r'__hdnea__=([^&]+)',
+                                final_url
+                            )
+
+                            if match:
+
+                                star_tokens[ch_id_str] = (
+                                    "__hdnea__=" +
+                                    match.group(1)
+                                )
+
         except Exception:
             pass
 
-        # 2. Global token
-        global_token = ""
+
+        # -------------------------------------------------
+        # 2. GLOBAL FALLBACK COOKIE
+        # -------------------------------------------------
+
         token_urls = [
             "https://allinonereborn2.online/jstrweb2/cookies.json",
             "https://allinonereborn2.online/jstrweb3/cookies.json",
             "https://allinonereborn2.online/jstrweb4/cookies.json"
         ]
+
+        global_token = ""
+
         for url in token_urls:
+
             try:
-                r = requests.get(url, timeout=3)
-                if r.status_code == 200:
-                    for item in r.json():
-                        if isinstance(item, dict) and item.get("cookie"):
+
+                res = requests.get(
+                    url,
+                    timeout=3
+                )
+
+                if res.status_code == 200:
+
+                    data = res.json()
+
+                    for item in data:
+
+                        if (
+                            isinstance(item, dict)
+                            and "cookie" in item
+                        ):
+
                             global_token = item["cookie"]
                             break
+
                     if global_token:
                         break
+
             except Exception:
                 continue
 
-        # 3. Secondary Streams Map (Filtered)
-        secondary_streams = get_secondary_streams()
 
-        # 4. DishTV LCN Map from GitHub
-        dishtv_lcn_map = get_dishtv_lcn_map()
+        # -------------------------------------------------
+        # 3. REGIONAL FILTER
+        # -------------------------------------------------
 
-        # 5. Base Proxy URL
-        base_proxy_url = "https://streamflexsmm.in/license/"
+        regional_langs = [
+            "tamil",
+            "telugu",
+            "malayalam",
+            "marathi",
+            "bengali",
+            "kannada",
+            "gujarati",
+            "odia"
+        ]
+
+
+        def clean_and_filter_name(raw_name):
+
+            name_lower = raw_name.lower()
+
+            for lang in regional_langs:
+
+                if lang in name_lower:
+                    return None
+
+            cleaned = raw_name
+
+            if " hindi" in name_lower:
+
+                cleaned = re.sub(
+                    r'\s+Hindi\b',
+                    '',
+                    raw_name,
+                    flags=re.IGNORECASE
+                )
+
+            return cleaned.strip()
+
+
+        # -------------------------------------------------
+        # 4. SECONDARY ZIO M3U
+        # -------------------------------------------------
+
+        secondary_streams = {}
+
         try:
-            url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/main/ZioMobile.m3u"
-            r = requests.get(url, timeout=3)
-            if r.status_code == 200:
-                for line in r.text.splitlines():
-                    if "license_key=" not in line:
-                        continue
-                    key = line.split("license_key=", 1)[1].strip()
-                    if not key or key == "null:null":
-                        continue
-                    m = re.search(r'(https?://[^\s]+?/)(?:\d+/)?$', key)
-                    if m:
-                        base_proxy_url = m.group(1)
-                    else:
-                        base_proxy_url = re.sub(r'\d+/?$', '', key)
-                    break
-        except Exception:
-            pass
 
-        # 6. Primary Channels
-        url = "https://jjtvxweb.pages.dev/jstr4web.json"
-        r = requests.get(url, timeout=6)
-        channels = r.json()
-
-        m3u = '#EXTM3U url-tvg="http://localhost:10000/epg.xml"\n'
-        epg = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv>\n'
-        
-        fallback_counter = 1
-        merged_count = 0
-        matched_lcn_count = 0
-
-        for ch in channels:
-            raw_name = ch.get("name", "Unknown")
-            ch_id = str(ch.get("id", ""))
-
-            clean_name = clean_and_filter_name(raw_name)
-            if not clean_name:
-                continue
-
-            match_name = normalize_name(raw_name)
-            lower_name = clean_name.lower()
-            if not match_name:
-                continue
-
-            primary_url = ch.get("url", "")
-            logo = ch.get("logo", "")
-            category = ch.get("category", "Unknown")
-
-            if not primary_url:
-                continue
-
-            group = f"JioTV+ ▶ | {category}"
-            group_logo = "https://i.postimg.cc/52qG6sKt/STREAMXi.png"
-
-            # --- MERGE SECONDARY STREAM AS PRIMARY ---
-            sec_stream_url = (
-                secondary_streams.get(match_name) or 
-                secondary_streams.get(lower_name)
+            sec_url = (
+                "https://raw.githubusercontent.com/"
+                "Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
             )
-            if not sec_stream_url:
-                for k, v in secondary_streams.items():
-                    if match_name in k or k in match_name or lower_name in k or k in lower_name:
-                        sec_stream_url = v
-                        break
 
-            if sec_stream_url:
-                target_url = sec_stream_url
-                merged_count += 1
-            else:
-                target_url = primary_url
-
-            # --- DISHTV LCN MATCHING (GITHUB DATA) ---
-            ch_no = (
-                dishtv_lcn_map.get(match_name) or 
-                dishtv_lcn_map.get(lower_name)
+            sec_res = requests.get(
+                sec_url,
+                timeout=5
             )
-            if not ch_no:
-                for k, v in dishtv_lcn_map.items():
-                    if match_name in k or k in match_name or lower_name in k or k in lower_name:
-                        ch_no = v
-                        break
-            
-            if ch_no:
-                matched_lcn_count += 1
-            else:
-                ch_no = str(fallback_counter)
-                fallback_counter += 1
 
-            formatted_name = f"{ch_no} - {clean_name}"
+            if sec_res.status_code == 200:
 
-            key_id = ch.get("keyId", "")
-            key_val = ch.get("key", "")
-            has_clearkey = key_id and key_val and key_id != "null" and key_val != "null"
+                lines = sec_res.text.splitlines()
 
-            ch_token = star_tokens.get(ch_id) or global_token
-            if ch_token:
-                separator = "&" if "?" in target_url else "?"
-                final_url = f"{target_url}{separator}{ch_token}"
-            else:
-                final_url = target_url
+                current_raw_name = ""
 
-            # M3U Entry
-            m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+                for line in lines:
 
-            # DRM / License Key
-            if has_clearkey:
-                m3u += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.license_key={key_id}:{key_val}\n'
-            else:
-                proxy = f"{base_proxy_url}{ch_id}/"
-                m3u += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.license_key={proxy}\n'
+                    line = line.strip()
 
-            # User Agent & Headers
-            m3u += '#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
-            if ch_token:
-                m3u += f'#EXTHTTP:{{"cookie":"{ch_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
-            else:
-                m3u += '#EXTHTTP:{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}\n'
-
-            # --- STREAM LINK ---
-            m3u += f'{final_url}\n\n'
-
-            # EPG Entry
-            epg += f'  <channel id="{ch_id}">\n'
-            epg += f'    <display-name lang="en">{clean_name}</display-name>\n'
-            if logo:
-                epg += f'    <icon src="{logo}" />\n'
-            epg += f'  </channel>\n'
-
-        epg += '</tv>'
-
-        cached_m3u = m3u
-        cached_epg = epg
-        print(f"Update finished! GitHub LCN Matched: {matched_lcn_count}, Secondary Merged: {merged_count}")
-
-    except Exception as e:
-        print(f"Background update error: {e}")
-    finally:
-        is_updating = False
-
-
-def periodic_updater():
-    while True:
-        update_m3u_background()
-        time.sleep(180)
-
-
-update_m3u_background()
-threading.Thread(target=periodic_updater, daemon=True).start()
-
-
-@app.route('/')
-def home():
-    return "JioTV M3U Server with Filtered Secondary & GitHub LCN is Running!"
-
-
-@app.route('/playlist.m3u')
-def generate_m3u():
-    return Response(cached_m3u, mimetype='audio/x-mpegurl')
-
-
-@app.route('/epg.xml')
-def generate_epg():
-    return Response(cached_epg, mimetype='application/xml')
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+           
