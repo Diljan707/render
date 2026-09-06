@@ -65,24 +65,35 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te URL store karo
+        # 3. Secondary Zio.m3u fetch karo te پورا original block store karo
         secondary_streams = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
             sec_res = requests.get(sec_url, timeout=5)
             if sec_res.status_code == 200:
                 lines = sec_res.text.splitlines()
+                current_block = []
                 current_raw_name = ""
                 for line in lines:
-                    line = line.strip()
-                    if line.startswith("#EXTINF:"):
-                        if "," in line:
-                            current_raw_name = line.split(",")[-1].strip()
-                    elif line and not line.startswith("#"):
-                        if current_raw_name:
+                    line_str = line.strip()
+                    if line_str.startswith("#EXTINF:"):
+                        if current_raw_name and current_block:
                             processed_name = clean_and_filter_name(current_raw_name)
                             if processed_name:
-                                secondary_streams[processed_name.lower()] = line
+                                secondary_streams[processed_name.lower()] = "\n".join(current_block)
+                        current_block = [line_str]
+                        if "," in line_str:
+                            current_raw_name = line_str.split(",")[-1].strip()
+                    elif line_str.startswith("#"):
+                        if current_block:
+                            current_block.append(line_str)
+                    elif line_str and not line_str.startswith("#"):
+                        if current_block:
+                            current_block.append(line_str)
+                            processed_name = clean_and_filter_name(current_raw_name)
+                            if processed_name:
+                                secondary_streams[processed_name.lower()] = "\n".join(current_block)
+                            current_block = []
                             current_raw_name = ""
         except Exception:
             pass
@@ -157,7 +168,7 @@ def update_m3u_background():
             ch_token = star_tokens.get(ch_id) or global_token
             final_url = f"{url}?{ch_token}" if ch_token and '?' not in url else f"{url}&{ch_token}" if ch_token else url
             
-            # --- Primary Stream Entry ---
+            # --- Primary Stream Entry (New Format) ---
             m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
             m3u += f'#KODIPROP:inputstream.adaptive.manifest_type=mpd\n'
             
@@ -178,36 +189,10 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # --- Secondary Backup Stream Entry (Zio) ---
-            sec_stream_url = secondary_streams.get(clean_name.lower())
-            if sec_stream_url:
-                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name} (Zio)\n'
-                m3u += f'#KODIPROP:inputstream.adaptive.manifest_type=mpd\n'
-                
-                if has_clearkey:
-                    license_key = f"{key_id}:{key_val}"
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={license_key}\n'
-                else:
-                    custom_license_proxy = f"{base_proxy_url}{ch_id}/"
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={custom_license_proxy}\n'
-                
-                m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
-                
-                # Zio ਦੇ ਲਿੰਕ ਵਿੱਚੋਂ ਉਸਦਾ ਆਪਣਾ ਟੋਕਨ ਕੱਢ ਕੇ ਕੁਕੀ ਵਿੱਚ ਦੇਣਾ
-                sec_token = global_token
-                if "__hdnea__=" in sec_stream_url:
-                    match_sec = re.search(r'__hdnea__=([^&]+)', sec_stream_url)
-                    if match_sec:
-                        sec_token = f"__hdnea__={match_sec.group(1)}"
-                
-                if sec_token:
-                    m3u += f'#EXTHTTP:{{"cookie":"{sec_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
-                else:
-                    m3u += f'#EXTHTTP:{{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
-                    
-                m3u += f'{sec_stream_url}\n'
+            # --- Secondary Backup Stream Entry (Zio Original Format) ---
+            sec_block = secondary_streams.get(clean_name.lower())
+            if sec_block:
+                m3u += f'\n{sec_block}\n'
 
             m3u += '\n'
 
@@ -227,7 +212,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Exact ClearKey & MPD Match for Zio) is Running!"
+    return "JioTV M3U Server (Primary Custom ClearKey + Secondary Original Zio) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -235,4 +220,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-        
+            
