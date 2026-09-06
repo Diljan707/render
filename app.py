@@ -6,241 +6,363 @@ import time
 
 app = Flask(__name__)
 
-cached_m3u = "#EXTM3U\n"
+cached_m3u = '#EXTM3U\n'
 cached_epg = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n</tv>'
-
 is_updating = False
 
 
-# =========================================================
-# CUSTOM DISHTV LCN LIST (Optional / Kept for reference)
-# =========================================================
-
-LCN_TEXT = """
-100: Star Plus HD
-101: Star Plus
-102: Zee TV HD
-103: Zee tv
-104: SONY ENTERTAINMENT TELEVISION HD
-105: SONY ENTERTAINMENT TELEVISION
-106: SONY SAB HD
-107: SONY SAB
-108: &TV HD
-109: Dangal TV
-"""
-
-
-# =========================================================
-# NAME NORMALIZATION
-# =========================================================
-
-def normalize_name(name):
-    name = str(name or "").lower().strip()
-
-    # Hindi remove
-    name = re.sub(r"\bhindi\b", "", name, flags=re.IGNORECASE)
-
-    # Common separators normalize
-    name = name.replace("_", " ")
-    name = name.replace("-", " ")
-    name = name.replace(".", " ")
-
-    # Extra spaces
-    name = re.sub(r"\s+", " ", name)
-
-    return name.strip()
-
-
-def normalize_lcn_name(name):
-    name = str(name or "").lower().strip()
-
-    name = re.sub(r"\bhindi\b", "", name)
-    name = re.sub(r"\bhd\b", " hd ", name)
-
-    name = name.replace("_", " ")
-    name = name.replace("-", " ")
-    name = name.replace(".", " ")
-
-    name = re.sub(r"\s*&\s*", "&", name)
-    name = re.sub(r"[^a-z0-9&]+", " ", name)
-    name = re.sub(r"\s+", " ", name)
-
-    return name.strip()
-
-
-# =========================================================
-# BUILD DISHTV LCN MAP
-# =========================================================
-
-dishtv_lcn_map = {}
-
-for line in LCN_TEXT.splitlines():
-    line = line.strip()
-    if not line or line.startswith("#") or ":" not in line:
-        continue
-
-    lcn, name = line.split(":", 1)
-    lcn = lcn.strip()
-    name = name.strip()
-
-    if not lcn or not name:
-        continue
-
-    key1 = normalize_name(name)
-    key2 = normalize_lcn_name(name)
-
-    if key1:
-        dishtv_lcn_map[key1] = lcn
-    if key2:
-        dishtv_lcn_map[key2] = lcn
-
-
-def find_lcn(channel_name):
-    raw = str(channel_name or "").strip()
-    if not raw:
-        return None
-
-    key = normalize_name(raw)
-    if key in dishtv_lcn_map:
-        return dishtv_lcn_map[key]
-
-    key = normalize_lcn_name(raw)
-    if key in dishtv_lcn_map:
-        return dishtv_lcn_map[key]
-
-    return None
-
-
-# =========================================================
-# REGIONAL FILTER
-# =========================================================
+# ==========================================
+# COMMON NAME FILTER & CLEANING
+# ==========================================
 
 regional_langs = [
-    "tamil",
-    "telugu",
-    "malayalam",
-    "marathi",
-    "bengali",
-    "kannada",
-    "gujarati",
-    "odia"
+    'tamil',
+    'telugu',
+    'malayalam',
+    'marathi',
+    'bangla',
+    'kannada',
+    'gujarati',
+    'odia'
 ]
 
 
-def clean_and_filter_name(raw_name):
-    raw_name = str(raw_name or "").strip()
-    if not raw_name:
+def clean_and_filter_name(name):
+    if not name:
         return None
 
-    name_lower = raw_name.lower()
+    name = name.strip()
+    low = name.lower()
 
-    # Regional channels remove
-    for lang in regional_langs:
-        if re.search(rf"\b{re.escape(lang)}\b", name_lower):
-            return None
+    # Regional language channels filter
+    if any(
+        re.search(rf'\b{re.escape(x)}\b', low)
+        for x in regional_langs
+    ):
+        return None
 
-    # Hindi remove
-    cleaned = re.sub(r"\s+\bHindi\b", "", raw_name, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned)
+    # Remove Hindi
+    name = re.sub(
+        r'\s+Hindi\b',
+        '',
+        name,
+        flags=re.IGNORECASE
+    )
 
-    return cleaned.strip()
+    # Remove SD
+    name = re.sub(
+        r'\bSD\b',
+        '',
+        name,
+        flags=re.IGNORECASE
+    )
+
+    return re.sub(r'\s+', ' ', name).strip()
 
 
-def get_extinf_name(line):
-    if not line.startswith("#EXTINF:"):
-        return ""
-    match = re.search(r",(.+)$", line)
-    if match:
-        return match.group(1).strip()
-    return ""
+def normalize_name(name):
+    cleaned = clean_and_filter_name(name)
+
+    if not cleaned:
+        return None
+
+    name = cleaned.lower()
+    name = re.sub(r'[^a-z0-9]+', '', name)
+
+    return name.strip()
 
 
-# =========================================================
-# SECONDARY M3U PARSER (WITH SAME FILTERS)
-# =========================================================
+# ==========================================
+# SECONDARY Zio.m3u STREAM EXTRACTOR
+# SAME FILTER AS PRIMARY
+# ==========================================
 
-def load_secondary_streams():
-    secondary_streams = {}
-    sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
+def get_secondary_streams():
+
+    streams = {}
 
     try:
-        print("Downloading secondary M3U...")
-        sec_res = requests.get(sec_url, timeout=10)
 
-        if sec_res.status_code != 200:
-            print("Secondary HTTP error:", sec_res.status_code)
-            return secondary_streams
+        url = (
+            "https://raw.githubusercontent.com/"
+            "Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
+        )
 
-        lines = sec_res.text.splitlines()
-        current_name = ""
-        current_extinf = ""
-        current_extra_tags = []
+        r = requests.get(url, timeout=5)
+
+        if r.status_code != 200:
+            print(
+                "Failed to fetch Zio.m3u, status:",
+                r.status_code
+            )
+            return streams
+
+        lines = r.text.splitlines()
+
+        raw_name = ""
 
         for line in lines:
+
             line = line.strip()
-            if not line:
-                continue
 
             if line.startswith("#EXTINF:"):
-                current_extinf = line
-                current_name = get_extinf_name(line)
-                current_extra_tags = []
-                continue
 
-            if current_extinf and line.startswith("#") and not line.startswith("#EXTINF:"):
-                if (
-                    line.startswith("#EXTHTTP:")
-                    or line.startswith("#EXTVLCOPT:")
-                    or line.startswith("#KODIPROP:")
-                    or line.startswith("#EXT-X-")
-                ):
-                    current_extra_tags.append(line)
-                continue
+                if "," in line:
+                    raw_name = line.split(",", 1)[1].strip()
+                else:
+                    raw_name = ""
 
-            if current_extinf and current_name and line and not line.startswith("#"):
-                # Apply same regional and clean filters to secondary streams
-                cleaned_name = clean_and_filter_name(current_name)
+            elif line and not line.startswith("#"):
 
-                if cleaned_name:
-                    key1 = normalize_name(cleaned_name)
-                    key2 = normalize_lcn_name(cleaned_name)
+                if raw_name:
 
-                    stream_data = {
-                        "url": line,
-                        "tags": list(current_extra_tags)
-                    }
+                    # SAME FILTER AS PRIMARY
+                    clean_raw = clean_and_filter_name(raw_name)
 
-                    if key1:
-                        secondary_streams[key1] = stream_data
-                    if key2:
-                        secondary_streams[key2] = stream_data
+                    if clean_raw:
 
-                current_name = ""
-                current_extinf = ""
-                current_extra_tags = []
+                        key = normalize_name(raw_name)
 
-        print("Secondary channels loaded:", len(secondary_streams))
+                        if key:
+                            streams[key] = line
+
+                        # Clean name matching
+                        streams[clean_raw.lower()] = line
+
+                    raw_name = ""
+
+        print(
+            f"Successfully loaded "
+            f"{len(streams)} filtered secondary streams"
+        )
 
     except Exception as e:
-        print(f"Secondary M3U error: {e}")
 
-    return secondary_streams
+        print(
+            "Secondary error:",
+            e
+        )
 
-
-def get_primary_url(ch):
-    return str(
-        ch.get("url")
-        or ch.get("stream_url")
-        or ch.get("link")
-        or ""
-    ).strip()
+    return streams
 
 
-# =========================================================
+# ==========================================
+# DISHTV LCN FETCHER
+# ==========================================
+
+def get_dishtv_lcn_map():
+
+    lcn_map = {}
+
+    try:
+
+        url = (
+            "https://raw.githubusercontent.com/"
+            "Diljan707/Automated-/main/"
+            "dishtv_lcn_list.txt"
+        )
+
+        r = requests.get(
+            url,
+            timeout=5
+        )
+
+        print(
+            f"DishTV LCN fetch status: {r.status_code}"
+        )
+
+        if r.status_code == 200:
+
+            lines = r.text.splitlines()
+
+            for line in lines:
+
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                parts = re.split(
+                    r'\||,|\t',
+                    line
+                )
+
+                if len(parts) < 2:
+                    continue
+
+                p1 = parts[0].strip()
+                p2 = parts[1].strip()
+
+                if p2.isdigit():
+
+                    ch_name = p1
+                    lcn_num = p2
+
+                elif p1.isdigit():
+
+                    ch_name = p2
+                    lcn_num = p1
+
+                else:
+                    continue
+
+                norm_k = normalize_name(ch_name)
+
+                if norm_k:
+                    lcn_map[norm_k] = lcn_num
+
+                lcn_map[ch_name.lower()] = lcn_num
+
+            print(
+                f"Successfully loaded "
+                f"{len(lcn_map)} LCN mappings"
+            )
+
+    except Exception as e:
+
+        print(
+            "DishTV LCN fetch error:",
+            e
+        )
+
+    return lcn_map
+
+
+# ==========================================
+# ADD ONE M3U CHANNEL ENTRY
+# ==========================================
+
+def add_m3u_entry(
+    m3u,
+    ch_id,
+    ch_no,
+    channel_name,
+    logo,
+    group,
+    group_logo,
+    stream_url,
+    key_id,
+    key_val,
+    base_proxy_url,
+    ch_token
+):
+
+    # --------------------------------------
+    # Channel information
+    # --------------------------------------
+
+    m3u += (
+        f'#EXTINF:-1 '
+        f'tvg-id="{ch_id}" '
+        f'ch-number="{ch_no}" '
+        f'group-title="{group}" '
+        f'group-logo="{group_logo}" '
+        f'tvg-logo="{logo}",'
+        f'{channel_name}\n'
+    )
+
+    # --------------------------------------
+    # DRM / ClearKey
+    # --------------------------------------
+
+    has_clearkey = (
+        key_id
+        and key_val
+        and key_id != "null"
+        and key_val != "null"
+    )
+
+    if has_clearkey:
+
+        m3u += (
+            '#KODIPROP:'
+            'inputstream.adaptive.license_type=clearkey\n'
+        )
+
+        m3u += (
+            f'#KODIPROP:'
+            f'inputstream.adaptive.license_key='
+            f'{key_id}:{key_val}\n'
+        )
+
+    else:
+
+        proxy = f'{base_proxy_url}{ch_id}/'
+
+        m3u += (
+            '#KODIPROP:'
+            'inputstream.adaptive.license_type=clearkey\n'
+        )
+
+        m3u += (
+            f'#KODIPROP:'
+            f'inputstream.adaptive.license_key='
+            f'{proxy}\n'
+        )
+
+    # --------------------------------------
+    # User Agent
+    # --------------------------------------
+
+    m3u += (
+        '#EXTVLCOPT:http-user-agent='
+        'plaYtv/7.1.5\n'
+    )
+
+    # --------------------------------------
+    # Headers
+    # --------------------------------------
+
+    if ch_token:
+
+        m3u += (
+            f'#EXTHTTP:{{'
+            f'"cookie":"{ch_token}",'
+            f'"Origin":"https://www.jiotv.com/",'
+            f'"Referer":"https://www.jiotv.com/"'
+            f'}}\n'
+        )
+
+    else:
+
+        m3u += (
+            '#EXTHTTP:{'
+            '"Origin":"https://www.jiotv.com/",'
+            '"Referer":"https://www.jiotv.com/"'
+            '}\n'
+        )
+
+    # --------------------------------------
+    # ORIGINAL STREAM URL
+    # --------------------------------------
+
+    final_url = stream_url
+
+    if ch_token:
+
+        separator = (
+            "&"
+            if "?" in final_url
+            else "?"
+        )
+
+        final_url = (
+            f'{final_url}'
+            f'{separator}'
+            f'{ch_token}'
+        )
+
+    m3u += f'{final_url}\n\n'
+
+    return m3u
+
+
+# ==========================================
 # BACKGROUND UPDATE
-# =========================================================
+# ==========================================
 
 def update_m3u_background():
+
     global cached_m3u
     global cached_epg
     global is_updating
@@ -251,188 +373,644 @@ def update_m3u_background():
     is_updating = True
 
     try:
-        # 1. Star Sports Token
-        COOKIE_STAR_SPORTS = "https://allinonereborn2.online/jtv-fetch/jstarcookie/cookie.json"
+
+        # ==================================
+        # 1. STAR SPORTS TOKENS
+        # ==================================
+
         star_tokens = {}
 
         try:
-            res = requests.get(COOKIE_STAR_SPORTS, timeout=6)
-            if res.status_code == 200:
-                data = res.json()
-                if isinstance(data, dict):
-                    for item in data.get("failed_results", []):
-                        if not isinstance(item, dict):
-                            continue
-                        ch_id_str = str(item.get("channel_id", ""))
-                        err_details = item.get("error_details", {})
-                        if not isinstance(err_details, dict):
-                            continue
-                        final_url = str(err_details.get("final_url", ""))
-                        if "__hdnea__=" in final_url:
-                            match = re.search(r"__hdnea__=([^&]+)", final_url)
-                            if match:
-                                star_tokens[ch_id_str] = "__hdnea__=" + match.group(1)
-        except Exception as e:
-            print(f"Star token error: {e}")
 
-        # 2. Global Cookie
-        token_urls = [
-            "https://allinonereborn2.online/jstrweb2/cookies.json",
-            "https://allinonereborn2.online/jstrweb3/cookies.json",
-            "https://allinonereborn2.online/jstrweb4/cookies.json"
-        ]
+            url = (
+                "https://allinonereborn2.online/"
+                "jtv-fetch/jstarcookie/cookie.json"
+            )
+
+            r = requests.get(
+                url,
+                timeout=6
+            )
+
+            if r.status_code == 200:
+
+                data = r.json()
+
+                for item in data.get(
+                    "failed_results",
+                    []
+                ):
+
+                    ch_id = str(
+                        item.get(
+                            "channel_id",
+                            ""
+                        )
+                    )
+
+                    final_url = (
+                        item.get(
+                            "error_details",
+                            {}
+                        ).get(
+                            "final_url",
+                            ""
+                        )
+                    )
+
+                    m = re.search(
+                        r'__hdnea__=([^&]+)',
+                        final_url
+                    )
+
+                    if m:
+
+                        star_tokens[ch_id] = (
+                            f'__hdnea__={m.group(1)}'
+                        )
+
+        except Exception:
+            pass
+
+
+        # ==================================
+        # 2. GLOBAL TOKEN
+        # ==================================
+
         global_token = ""
 
+        token_urls = [
+
+            "https://allinonereborn2.online/"
+            "jstrweb2/cookies.json",
+
+            "https://allinonereborn2.online/"
+            "jstrweb3/cookies.json",
+
+            "https://allinonereborn2.online/"
+            "jstrweb4/cookies.json"
+        ]
+
         for url in token_urls:
+
             try:
-                res = requests.get(url, timeout=4)
-                if res.status_code != 200:
-                    continue
-                data = res.json()
-                if isinstance(data, list):
-                    for item in data:
-                        if isinstance(item, dict) and item.get("cookie"):
-                            global_token = str(item["cookie"])
+
+                r = requests.get(
+                    url,
+                    timeout=3
+                )
+
+                if r.status_code == 200:
+
+                    for item in r.json():
+
+                        if (
+                            isinstance(item, dict)
+                            and item.get("cookie")
+                        ):
+
+                            global_token = (
+                                item["cookie"]
+                            )
+
                             break
-                if global_token:
-                    break
-            except Exception as e:
-                print(f"Cookie error: {e}")
+
+                    if global_token:
+                        break
+
+            except Exception:
                 continue
 
-        # 3. Secondary M3U
-        secondary_streams = load_secondary_streams()
 
-        # 4. Channel JSON
-        channel_url = "https://jjtvxweb.pages.dev/jstr4web.json"
-        res = requests.get(channel_url, timeout=12)
-        res.raise_for_status()
-        channels = res.json()
+        # ==================================
+        # 3. SECONDARY STREAMS
+        # ==================================
 
-        if not isinstance(channels, list):
-            raise ValueError("Channel JSON list nahi hai")
+        secondary_streams = (
+            get_secondary_streams()
+        )
 
-        # 5. Build M3U
-        m3u_lines = ["#EXTM3U"]
-        epg_channels = []
+
+        # ==================================
+        # 4. DISHTV LCN
+        # ==================================
+
+        dishtv_lcn_map = (
+            get_dishtv_lcn_map()
+        )
+
+
+        # ==================================
+        # 5. BASE PROXY URL
+        # ==================================
+
+        base_proxy_url = (
+            "https://streamflexsmm.in/license/"
+        )
+
+        try:
+
+            url = (
+                "https://raw.githubusercontent.com/"
+                "Sflex0719/STBPLUS/main/"
+                "ZioMobile.m3u"
+            )
+
+            r = requests.get(
+                url,
+                timeout=3
+            )
+
+            if r.status_code == 200:
+
+                for line in r.text.splitlines():
+
+                    if "license_key=" not in line:
+                        continue
+
+                    key = (
+                        line.split(
+                            "license_key=",
+                            1
+                        )[1].strip()
+                    )
+
+                    if (
+                        not key
+                        or key == "null:null"
+                    ):
+                        continue
+
+                    m = re.search(
+                        r'(https?://[^\s]+?/)(?:\d+/)?$',
+                        key
+                    )
+
+                    if m:
+
+                        base_proxy_url = (
+                            m.group(1)
+                        )
+
+                    else:
+
+                        base_proxy_url = re.sub(
+                            r'\d+/?$',
+                            '',
+                            key
+                        )
+
+                    break
+
+        except Exception:
+            pass
+
+
+        # ==================================
+        # 6. PRIMARY CHANNELS
+        # ==================================
+
+        url = (
+            "https://jjtvxweb.pages.dev/"
+            "jstr4web.json"
+        )
+
+        r = requests.get(
+            url,
+            timeout=6
+        )
+
+        channels = r.json()
+
+
+        # ==================================
+        # M3U + EPG
+        # ==================================
+
+        m3u = (
+            '#EXTM3U '
+            'url-tvg="http://localhost:10000/epg.xml"\n'
+        )
+
+        epg = (
+            '<?xml version="1.0" '
+            'encoding="UTF-8"?>\n'
+            '<!DOCTYPE tv SYSTEM "xmltv.dtd">\n'
+            '<tv>\n'
+        )
+
+
+        fallback_counter = 1
 
         primary_count = 0
         secondary_count = 0
+        matched_lcn_count = 0
+
+
+        # ==================================
+        # PROCESS CHANNELS
+        # ==================================
 
         for ch in channels:
-            if not isinstance(ch, dict):
-                continue
 
-            raw_name = str(ch.get("name") or ch.get("channel_name") or "").strip()
-            if not raw_name:
-                continue
+            raw_name = ch.get(
+                "name",
+                "Unknown"
+            )
 
-            ch_id = str(ch.get("id") or ch.get("channel_id") or "").strip()
+            ch_id = str(
+                ch.get(
+                    "id",
+                    ""
+                )
+            )
 
-            clean_name = clean_and_filter_name(raw_name)
+            # --------------------------------
+            # PRIMARY FILTER
+            # --------------------------------
+
+            clean_name = (
+                clean_and_filter_name(
+                    raw_name
+                )
+            )
+
             if not clean_name:
                 continue
 
-            primary_url = get_primary_url(ch)
+            match_name = (
+                normalize_name(
+                    raw_name
+                )
+            )
+
+            lower_name = (
+                clean_name.lower()
+            )
+
+            if not match_name:
+                continue
+
+
+            # --------------------------------
+            # PRIMARY DATA
+            # --------------------------------
+
+            primary_url = ch.get(
+                "url",
+                ""
+            )
+
+            logo = ch.get(
+                "logo",
+                ""
+            )
+
+            category = ch.get(
+                "category",
+                "Unknown"
+            )
+
             if not primary_url:
                 continue
 
-            # Display name without LCN numbers prefix
-            display_name = clean_name
 
-            # Check secondary match using clean name variations
-            secondary_data = None
-            secondary_key1 = normalize_name(clean_name)
-            secondary_key2 = normalize_lcn_name(clean_name)
-
-            if secondary_key1 in secondary_streams:
-                secondary_data = secondary_streams[secondary_key1]
-            elif secondary_key2 in secondary_streams:
-                secondary_data = secondary_streams[secondary_key2]
-
-            # Primary EXTINF
-            extinf = (
-                f'#EXTINF:-1 '
-                f'tvg-id="{ch_id}" '
-                f'tvg-name="{display_name}",'
-                f'{display_name}'
+            group = (
+                f"JioTV+ ▶ | {category}"
             )
-            m3u_lines.append(extinf)
 
-            if global_token:
-                m3u_lines.append(f"#EXTHTTP:{global_token}")
+            group_logo = (
+                "https://i.postimg.cc/"
+                "52qG6sKt/STREAMXi.png"
+            )
 
-            if ch_id in star_tokens:
-                m3u_lines.append(f"#EXTHTTP:{star_tokens[ch_id]}")
 
-            m3u_lines.append(primary_url)
+            # =================================
+            # FIND SECONDARY
+            # =================================
+
+            sec_stream_url = (
+                secondary_streams.get(
+                    match_name
+                )
+                or
+                secondary_streams.get(
+                    lower_name
+                )
+            )
+
+
+            # Fuzzy matching
+            if not sec_stream_url:
+
+                for k, v in secondary_streams.items():
+
+                    if (
+                        match_name in k
+                        or k in match_name
+                        or lower_name in k
+                        or k in lower_name
+                    ):
+
+                        sec_stream_url = v
+                        break
+
+
+            # =================================
+            # LCN MATCH
+            # =================================
+
+            ch_no = (
+                dishtv_lcn_map.get(
+                    match_name
+                )
+                or
+                dishtv_lcn_map.get(
+                    lower_name
+                )
+            )
+
+
+            if not ch_no:
+
+                for k, v in dishtv_lcn_map.items():
+
+                    if (
+                        match_name in k
+                        or k in match_name
+                        or lower_name in k
+                        or k in lower_name
+                    ):
+
+                        ch_no = v
+                        break
+
+
+            if ch_no:
+
+                matched_lcn_count += 1
+
+            else:
+
+                ch_no = str(
+                    fallback_counter
+                )
+
+                fallback_counter += 1
+
+
+            # =================================
+            # DRM DATA
+            # =================================
+
+            key_id = ch.get(
+                "keyId",
+                ""
+            )
+
+            key_val = ch.get(
+                "key",
+                ""
+            )
+
+
+            # =================================
+            # TOKEN
+            # =================================
+
+            ch_token = (
+                star_tokens.get(ch_id)
+                or global_token
+            )
+
+
+            # =================================
+            # PRIMARY ENTRY
+            # =================================
+
+            m3u = add_m3u_entry(
+
+                m3u,
+
+                ch_id,
+
+                ch_no,
+
+                clean_name,
+
+                logo,
+
+                group,
+
+                group_logo,
+
+                primary_url,
+
+                key_id,
+
+                key_val,
+
+                base_proxy_url,
+
+                ch_token
+            )
+
             primary_count += 1
 
-            if secondary_data:
-                secondary_url = str(secondary_data.get("url", "")).strip()
-                if secondary_url and re.match(r"^(https?|rtmp|rtsp)://", secondary_url, flags=re.IGNORECASE):
-                    secondary_count += 1
-                    print(f"SECONDARY MATCH: {clean_name} -> {secondary_url[:80]}")
 
-            if ch_id:
-                safe_name = (
-                    display_name
-                    .replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                )
-                epg_channels.append(
-                    f'  <channel id="{ch_id}">'
-                    f'<display-name>{safe_name}</display-name>'
-                    f'</channel>'
+            # =================================
+            # SECONDARY ENTRY
+            # =================================
+
+            if sec_stream_url:
+
+                # Same filtered/cleaned name
+                # Same LCN
+                # Separate ORIGINAL secondary URL
+
+                m3u = add_m3u_entry(
+
+                    m3u,
+
+                    ch_id,
+
+                    ch_no,
+
+                    clean_name,
+
+                    logo,
+
+                    group,
+
+                    group_logo,
+
+                    sec_stream_url,
+
+                    key_id,
+
+                    key_val,
+
+                    base_proxy_url,
+
+                    ch_token
                 )
 
-        epg_xml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<tv>\n'
-            + "\n".join(epg_channels)
-            + "\n</tv>"
+                secondary_count += 1
+
+
+            # =================================
+            # EPG
+            # =================================
+
+            epg += (
+                f'  <channel id="{ch_id}">\n'
+            )
+
+            epg += (
+                f'    <display-name '
+                f'lang="en">'
+                f'{clean_name}'
+                f'</display-name>\n'
+            )
+
+            if logo:
+
+                epg += (
+                    f'    <icon '
+                    f'src="{logo}" />\n'
+                )
+
+            epg += (
+                '  </channel>\n'
+            )
+
+
+        # ==================================
+        # FINISH EPG
+        # ==================================
+
+        epg += '</tv>'
+
+
+        # ==================================
+        # SAVE CACHE
+        # ==================================
+
+        cached_m3u = m3u
+        cached_epg = epg
+
+
+        print(
+            "======================================"
         )
 
-        cached_m3u = "\n".join(m3u_lines) + "\n"
-        cached_epg = epg_xml
+        print(
+            "Update finished!"
+        )
 
-        print("================================")
-        print("Playlist updated (LCN numbers removed)")
-        print(f"Primary channels: {primary_count}")
-        print(f"Secondary matches: {secondary_count}")
-        print("================================")
+        print(
+            f"Primary channels: {primary_count}"
+        )
+
+        print(
+            f"Secondary channels: {secondary_count}"
+        )
+
+        print(
+            f"GitHub LCN matched: "
+            f"{matched_lcn_count}"
+        )
+
+        print(
+            "======================================"
+        )
+
 
     except Exception as e:
-        print(f"Background update error: {e}")
+
+        print(
+            "Background update error:",
+            e
+        )
+
     finally:
+
         is_updating = False
 
 
+# ==========================================
+# PERIODIC UPDATER
+# ==========================================
+
 def periodic_updater():
+
     while True:
-        try:
-            update_m3u_background()
-        except Exception as e:
-            print(f"Updater error: {e}")
+
+        update_m3u_background()
+
         time.sleep(180)
 
 
-@app.route("/")
-def index():
-    return "IPTV Server Running"
+# ==========================================
+# INITIAL UPDATE
+# ==========================================
+
+update_m3u_background()
 
 
-@app.route("/playlist.m3u")
-def playlist():
-    return Response(cached_m3u, mimetype="audio/x-mpegurl")
+threading.Thread(
+    target=periodic_updater,
+    daemon=True
+).start()
 
 
-@app.route("/epg.xml")
-def epg():
-    return Response(cached_epg, mimetype="application/xml")
+# ==========================================
+# HOME
+# ==========================================
+
+@app.route('/')
+def home():
+
+    return (
+        "JioTV M3U Server with "
+        "Primary + Secondary Streams "
+        "is Running!"
+    )
 
 
-if __name__ == "__main__":
-    threading.Thread(target=periodic_updater, daemon=True).start()
-    app.run(host="0.0.0.0", port=10000)
+# ==========================================
+# PLAYLIST
+# ==========================================
+
+@app.route('/playlist.m3u')
+def generate_m3u():
+
+    return Response(
+        cached_m3u,
+        mimetype='audio/x-mpegurl'
+    )
+
+
+# ==========================================
+# EPG
+# ==========================================
+
+@app.route('/epg.xml')
+def generate_epg():
+
+    return Response(
+        cached_epg,
+        mimetype='application/xml'
+    )
+
+
+# ==========================================
+# START SERVER
+# ==========================================
+
+if __name__ == '__main__':
+
+    app.run(
+        host='0.0.0.0',
+        port=10000
+    )
