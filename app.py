@@ -88,7 +88,6 @@ def update_m3u_background():
                             current_raw_name = line.split(",")[-1].strip()
                     elif line and not line.startswith("#"):
                         if current_raw_name:
-                            # Ohi filter te cleaning secondary නਾਮਾਂ ਤੇ ਵੀ ਲਾਗੂ ਕਰੋ
                             processed_name = clean_and_filter_name(current_raw_name)
                             if processed_name:
                                 secondary_streams[processed_name.lower()] = line
@@ -143,7 +142,7 @@ def update_m3u_background():
             # Apply same filter & cleaning function
             clean_name = clean_and_filter_name(raw_name)
             if not clean_name:
-                continue  # Regional language si, skip kar dita
+                continue
                 
             url = ch.get('url', '')
             logo = ch.get('logo', '')
@@ -169,7 +168,7 @@ def update_m3u_background():
             ch_token = star_tokens.get(ch_id) or global_token
             final_url = f"{url}?{ch_token}" if ch_token and '?' not in url else f"{url}&{ch_token}" if ch_token else url
             
-            # M3U Entry for Primary Stream
+            # Primary Stream Entry
             m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
             
             if has_clearkey:
@@ -189,10 +188,12 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Match using cleaned name
+            # Secondary Backup Stream Entry (With unified name, logo, LCN and its own distinct backup format)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
-                m3u += f'#EXTINF:-1,{formatted_name}\n'
+                sec_group = f"JioTV+ Backup ▶ | {category}"
+                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{sec_group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name} (Backup)\n'
+                m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
                 m3u += f'{sec_stream_url}\n'
 
             m3u += '\n'
@@ -223,7 +224,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Unified Filtering & Fallback is Running!"
+    return "JioTV M3U Server with Unified Filtering & Backup Format is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
