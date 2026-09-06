@@ -68,10 +68,8 @@ def update_m3u_background():
         # Advanced SD/HD Separation Key Generator
         def get_channel_key(name):
             name_lower = name.lower()
-            # Remove special characters and extra spaces for clean matching
             clean = re.sub(r'[^a-z0-9\s]', '', name_lower)
             if 'hd' in clean.split() or 'fhd' in clean.split():
-                # Remove 'hd'/'fhd' and mark as _hd
                 base = re.sub(r'\b(hd|fhd|hevc)\b', '', clean).strip()
                 return base + "_hd"
             else:
@@ -171,8 +169,13 @@ def update_m3u_background():
                 ch_no = str(fallback_counter)
                 fallback_counter += 1
                 
-            formatted_name = clean_name
-            ch_key = get_channel_key(formatted_name)
+            ch_key = get_channel_key(clean_name)
+            
+            # --- Adding (480p) or (1080p) based on SD/HD ---
+            if 'hd' in ch_key:
+                formatted_name = f"{clean_name} (1080p)"
+            else:
+                formatted_name = f"{clean_name} (480p)"
                 
             key_id = ch.get('keyId', '')
             key_val = ch.get('key', '')
@@ -201,7 +204,7 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # --- Secondary Backup Stream Entry (Strict SD/HD Separation) ---
+            # --- Secondary Backup Stream Entry ---
             sec_data = secondary_channels.get(ch_key)
             if sec_data:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
@@ -229,7 +232,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Strict SD and HD Separation Fixed) is Running!"
+    return "JioTV M3U Server (480p & 1080p Tags Added) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -237,4 +240,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-        
+                                      
