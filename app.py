@@ -65,25 +65,36 @@ def update_m3u_background():
                     return None  
             return raw_name.strip()
 
-        # 3. Secondary Zio.m3u fetch karo te ohi filter lagao
-        secondary_streams = {}
+        # 3. Secondary Zio.m3u fetch karo te poora block (EXTINF, KODIPROP, URL) store karo
+        secondary_channels = {}
         try:
             sec_url = "https://raw.githubusercontent.com/Sflex0719/STBPLUS/refs/heads/main/Zio.m3u"
             sec_res = requests.get(sec_url, timeout=5)
             if sec_res.status_code == 200:
                 lines = sec_res.text.splitlines()
-                current_raw_name = ""
+                current_extinf = ""
+                current_props = []
                 for line in lines:
                     line = line.strip()
                     if line.startswith("#EXTINF:"):
-                        if "," in line:
-                            current_raw_name = line.split(",")[-1].strip()
+                        current_extinf = line
+                        current_props = []
+                    elif line.startswith("#KODIPROP:") or line.startswith("#EXTVLCOPT:") or line.startswith("#EXTHTTP:"):
+                        current_props.append(line)
                     elif line and not line.startswith("#"):
-                        if current_raw_name:
-                            processed_name = clean_and_filter_name(current_raw_name)
-                            if processed_name:
-                                secondary_streams[processed_name.lower()] = line
-                            current_raw_name = ""
+                        if current_extinf:
+                            # Extract name from EXTINF
+                            if "," in current_extinf:
+                                raw_sec_name = current_extinf.split(",")[-1].strip()
+                                processed_name = clean_and_filter_name(raw_sec_name)
+                                if processed_name:
+                                    secondary_channels[processed_name.lower()] = {
+                                        "extinf": current_extinf,
+                                        "props": current_props,
+                                        "url": line
+                                    }
+                            current_extinf = ""
+                            current_props = []
         except Exception:
             pass
 
@@ -178,28 +189,22 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Added EXTHTTP Headers & Cookies to fix DRM/Decryption Error)
-            sec_stream_url = secondary_streams.get(clean_name.lower())
-            if sec_stream_url:
+            # Secondary Backup Stream Entry (Using Zio's original format and metadata with unified ID, Group & Name for folding)
+            sec_data = secondary_channels.get(clean_name.lower())
+            if sec_data:
+                # Same metadata ensure karn ਲਈ تاکہ folding ঠিক ਕੰਮ करे
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
                 
-                if has_clearkey:
-                    license_key = f"{key_id}:{key_val}"
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={license_key}\n'
-                else:
-                    custom_license_proxy = f"{base_proxy_url}{ch_id}/"
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
-                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={custom_license_proxy}\n'
+                # Zio source de apne original properties (license keys/proxies) apply karne
+                for prop in sec_data["props"]:
+                    m3u += f'{prop}\n'
                 
-                m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
+                # Jekar kodiprop nahi si ta default user-agent la dena
+                if not any("license_key" in p for p in sec_data["props"]):
+                    m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
+                    m3u += f'#KODIPROP:inputstream.adaptive.license_key={base_proxy_url}{ch_id}/\n'
                 
-                if ch_token:
-                    m3u += f'#EXTHTTP:{{"cookie":"{ch_token}","Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
-                else:
-                    m3u += f'#EXTHTTP:{{"Origin":"https://www.jiotv.com/","Referer":"https://www.jiotv.com/"}}\n'
-                    
-                m3u += f'{sec_stream_url}\n'
+                m3u += f'{sec_data["url"]}\n'
 
             m3u += '\n'
 
@@ -219,7 +224,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server (Secondary DRM Fixed) is Running!"
+    return "JioTV M3U Server (Zio Original Format Integrated) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
@@ -227,4 +232,4 @@ def generate_m3u():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-        
+                            
