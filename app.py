@@ -188,11 +188,10 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Exact same name, ID, and LCN for seamless OTT Navigator folding)
+            # Secondary Backup Stream Entry (Exact same group, name, ID, and LCN for seamless folding)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
-                sec_group = f"JioTV+ Backup ▶ | {category}"
-                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{sec_group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
                 m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
                 m3u += f'#KODIPROP:inputstream.adaptive.license_key={base_proxy_url}{ch_id}/\n'
                 m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
@@ -238,3 +237,4 @@ def generate_epg():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
+            
