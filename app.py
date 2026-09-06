@@ -7,11 +7,10 @@ import time
 app = Flask(__name__)
 
 cached_m3u = '#EXTM3U\n'
-cached_epg = '<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n</tv>'
 is_updating = False
 
 def update_m3u_background():
-    global cached_m3u, cached_epg, is_updating
+    global cached_m3u, is_updating
     if is_updating:
         return
     is_updating = True
@@ -56,7 +55,7 @@ def update_m3u_background():
             except Exception:
                 continue
 
-        # Regional filter function (Hindi names kept as requested)
+        # Regional filter function (Hindi names kept)
         regional_langs = ['tamil', 'telugu', 'malayalam', 'marathi', 'bengali', 'kannada', 'gujarati', 'odia']
 
         def clean_and_filter_name(raw_name):
@@ -119,12 +118,11 @@ def update_m3u_background():
         except Exception:
             pass
 
-        # 6. Channels JSON fetch te M3U generation
+        # 6. Channels JSON fetch te M3U generation (Without EPG)
         channels_res = requests.get("https://jjtvxweb.pages.dev/jstr4web.json", timeout=6)
         channels = channels_res.json()
         
-        m3u = '#EXTM3U url-tvg="http://localhost:10000/epg.xml"\n'
-        epg_xml = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv>\n'
+        m3u = '#EXTM3U\n'
         
         fallback_counter = 1
         
@@ -151,7 +149,7 @@ def update_m3u_background():
                 ch_no = str(fallback_counter)
                 fallback_counter += 1
                 
-            formatted_name = f"{ch_no} - {clean_name}"
+            formatted_name = clean_name
                 
             key_id = ch.get('keyId', '')
             key_val = ch.get('key', '')
@@ -180,7 +178,7 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (Same Name, LCN, ID, Group & Exact License Key applied)
+            # Secondary Backup Stream Entry
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
                 m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
@@ -199,17 +197,7 @@ def update_m3u_background():
 
             m3u += '\n'
 
-            # EPG channel tag
-            epg_xml += f'  <channel id="{ch_id}">\n'
-            epg_xml += f'    <display-name lang="en">{clean_name}</display-name>\n'
-            if logo:
-                epg_xml += f'    <icon src="{logo}" />\n'
-            epg_xml += f'  </channel>\n'
-
-        epg_xml += '</tv>'
-
         cached_m3u = m3u
-        cached_epg = epg_xml
     except Exception as e:
         print(f"Background update error: {e}")
     finally:
@@ -225,16 +213,12 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Synced License Keys & Auto-Folding is Running!"
+    return "JioTV M3U Server (EPG Removed) is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
     return Response(cached_m3u, mimetype='audio/x-mpegurl')
 
-@app.route('/epg.xml')
-def generate_epg():
-    return Response(cached_epg, mimetype='application/xml')
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-    
+                                      
