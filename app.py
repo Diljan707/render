@@ -188,11 +188,13 @@ def update_m3u_background():
                 
             m3u += f'{final_url}\n'
 
-            # Secondary Backup Stream Entry (With unified name, logo, LCN and its own distinct backup format)
+            # Secondary Backup Stream Entry (Exact same name, ID, and LCN for seamless OTT Navigator folding)
             sec_stream_url = secondary_streams.get(clean_name.lower())
             if sec_stream_url:
                 sec_group = f"JioTV+ Backup ▶ | {category}"
-                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{sec_group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name} (Backup)\n'
+                m3u += f'#EXTINF:-1 tvg-id="{ch_id}" ch-number="{ch_no}" group-title="{sec_group}" group-logo="{group_logo}" tvg-logo="{logo}",{formatted_name}\n'
+                m3u += f'#KODIPROP:inputstream.adaptive.license_type=clearkey\n'
+                m3u += f'#KODIPROP:inputstream.adaptive.license_key={base_proxy_url}{ch_id}/\n'
                 m3u += f'#EXTVLCOPT:http-user-agent=plaYtv/7.1.5\n'
                 m3u += f'{sec_stream_url}\n'
 
@@ -224,7 +226,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Unified Filtering & Backup Format is Running!"
+    return "JioTV M3U Server with Auto-Folding Support is Running!"
 
 @app.route('/playlist.m3u')
 def generate_m3u():
