@@ -34,28 +34,20 @@ def clean_and_filter_name(name):
     name = name.strip()
     low = name.lower()
 
-    # ਪੂਰੀ ਪਲੇਲਿਸਟ ਵਿੱਚੋਂ ਰੀਜਨਲ ਭਾਸ਼ਾਵਾਂ ਵਾਲੇ ਚੈਨਲ ਫਿਲਟਰ ਕਰਨਾ
     if any(re.search(rf'\b{re.escape(x)}\b', low) for x in regional_langs):
         return None
 
-    # ਨਾਮ ਵਿੱਚੋਂ 'Hindi' ਹਟਾਉਣਾ
     name = re.sub(r'\s+Hindi\b', '', name, flags=re.IGNORECASE)
-
-    # ਨਾਮ ਵਿੱਚੋਂ 'SD' ਹਟਾਉਣਾ (ਜਿਵੇਂ Sony SAB SD -> Sony SAB)
     name = re.sub(r'\bSD\b', '', name, flags=re.IGNORECASE)
 
     return re.sub(r'\s+', ' ', name).strip()
 
 
 def normalize_name(name):
-    name = clean_and_filter_name(name)
-
     if not name:
         return None
-
     name = name.lower()
-    name = re.sub(r'[^a-z0-9]+', '', name)  # ਸਾਰੇ ਸਪੇਸ ਅਤੇ ਨਿਸ਼ਾਨ ਹਟਾ ਕੇ ਮੈਚ ਬਣਾਉਣਾ
-
+    name = re.sub(r'[^a-z0-9]+', '', name)
     return name.strip()
 
 
@@ -87,9 +79,10 @@ def get_secondary_streams():
                     raw_name = ""
             elif line and not line.startswith("#"):
                 if raw_name:
-                    key = normalize_name(raw_name)
-                    if key:
-                        streams[key] = line
+                    clean_raw = clean_and_filter_name(raw_name)
+                    if clean_raw:
+                        streams[normalize_name(clean_raw)] = line
+                        streams[clean_raw.lower()] = line
                     raw_name = ""
         
         print(f"Successfully loaded {len(streams)} secondary streams from Zio.m3u")
@@ -100,7 +93,7 @@ def get_secondary_streams():
 
 
 # ==========================================
-# DISHTV LCN FETCHER FROM GITHUB
+# DISHTV LCN FETCHER FROM GITHUB (ULTRA-FLEXIBLE)
 # ==========================================
 
 def get_dishtv_lcn_map():
@@ -108,6 +101,7 @@ def get_dishtv_lcn_map():
     try:
         url = "https://raw.githubusercontent.com/Diljan707/Automated-/main/dishtv_lcn_list.txt"
         r = requests.get(url, timeout=5)
+        print(f"DishTV LCN fetch status: {r.status_code}")
         if r.status_code == 200:
             lines = r.text.splitlines()
             for line in lines:
@@ -120,12 +114,25 @@ def get_dishtv_lcn_map():
                     p2 = parts[1].strip()
                     
                     if p2.isdigit():
-                        lcn_map[normalize_name(p1)] = p2
+                        ch_name = p1
+                        lcn_num = p2
                     elif p1.isdigit():
-                        lcn_map[normalize_name(p2)] = p1
+                        ch_name = p2
+                        lcn_num = p1
+                    else:
+                        continue
+                    
+                    # ਸਾਰੇ ਵੇਰੀਐਂਟ ਸੇਵ ਕਰੋ ताकि ਮੈਚਿੰਗ ਵਿੱਚ ਕੋਈ ਕਮੀ ਨਾ ਰਹੇ
+                    clean_ch = clean_and_filter_name(ch_name)
+                    if clean_ch:
+                        lcn_map[normalize_name(clean_ch)] = lcn_num
+                        lcn_map[clean_ch.lower()] = lcn_num
+                    lcn_map[normalize_name(ch_name)] = lcn_num
+                    lcn_map[ch_name.lower()] = lcn_num
+                    
             print(f"Successfully loaded {len(lcn_map)} LCN mappings from GitHub.")
     except Exception as e:
-        print("DishTV LCN fetch error:", e)
+        print("DishTV Lcn fetch error:", e)
     return lcn_map
 
 
@@ -226,6 +233,10 @@ def update_m3u_background():
                 continue
 
             match_name = normalize_name(raw_name)
+            clean_match = normalize_name(clean_name)
+            lower_name = clean_name.lower()
+            raw_lower = raw_name.lower()
+            
             if not match_name:
                 continue
 
@@ -239,11 +250,17 @@ def update_m3u_background():
             group = f"JioTV+ ▶ | {category}"
             group_logo = "https://i.postimg.cc/52qG6sKt/STREAMXi.png"
 
-            # DishTV LCN ਮੈਚ ਕਰਨਾ
-            ch_no = dishtv_lcn_map.get(match_name)
+            # --- DISHTV LCN MATCHING (POWERFUL CHECK) ---
+            ch_no = (
+                dishtv_lcn_map.get(clean_match) or 
+                dishtv_lcn_map.get(match_name) or 
+                dishtv_lcn_map.get(lower_name) or 
+                dishtv_lcn_map.get(raw_lower)
+            )
+            
             if not ch_no:
                 for k, v in dishtv_lcn_map.items():
-                    if match_name in k or k in match_name:
+                    if k in clean_match or clean_match in k or k in match_name or match_name in k or k in lower_name or lower_name in k:
                         ch_no = v
                         break
             
@@ -255,11 +272,17 @@ def update_m3u_background():
 
             formatted_name = f"{ch_no} - {clean_name}"
 
-            # --- MERGE SECONDARY STREAM AS PRIMARY IF AVAILABLE ---
-            sec_stream_url = secondary_streams.get(match_name)
+            # --- MERGE SECONDARY STREAM AS PRIMARY ---
+            sec_stream_url = (
+                secondary_streams.get(clean_match) or 
+                secondary_streams.get(match_name) or 
+                secondary_streams.get(lower_name) or 
+                secondary_streams.get(raw_lower)
+            )
+            
             if not sec_stream_url:
                 for k, v in secondary_streams.items():
-                    if match_name in k or k in match_name:
+                    if k in clean_match or clean_match in k or k in match_name or match_name in k or k in lower_name or lower_name in k:
                         sec_stream_url = v
                         break
 
@@ -313,7 +336,7 @@ def update_m3u_background():
 
         cached_m3u = m3u
         cached_epg = epg
-        print(f"Playlist updated successfully. LCN Matched: {matched_lcn_count}, Secondary Merged: {merged_count}")
+        print(f"Update finished! LCN Matched from GitHub: {matched_lcn_count}, Secondary Merged: {merged_count}")
 
     except Exception as e:
         print(f"Background update error: {e}")
@@ -333,7 +356,7 @@ threading.Thread(target=periodic_updater, daemon=True).start()
 
 @app.route('/')
 def home():
-    return "JioTV M3U Server with Merged Secondary & GitHub LCN is Running!"
+    return "JioTV M3U Server with Fixed LCN is Running!"
 
 
 @app.route('/playlist.m3u')
